@@ -1,8 +1,9 @@
-![logo](/src/youko.png)
-
 # zgggy 的个人博客
 
-- 自动驾驶决策规划、系统架构
-- C++ / Python
+![logo](/src/youko.png)
 
-[gitee](https://gitee.com/zgggy) | [github](https://github.com/zgggy)
+#### 自动驾驶 | 系统架构 | 决策规划 | C++/Python | Cyber/ROS
+
+#### [gitee](https://gitee.com/zgggy) | [github](https://github.com/zgggy)
+
+[start](/README.md)
