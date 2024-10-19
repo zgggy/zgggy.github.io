@@ -2,6 +2,4 @@
 
 - [文章](/articles/)
 
-- 记录
-  - [短文](/essays/)
-  - [随笔](/shorts/)
+- [我](/about/)
