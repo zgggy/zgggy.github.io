@@ -8,7 +8,7 @@
 
 ![派大栓](src/paidashuan72.svg ":size=100px") <font size=6>派大栓/zgggy</font>
 
-经验尚浅的自动驾驶工程尸一头，调度、规控相关，欢迎交流。
+资深睡觉人 & 经验尚浅的自动驾驶工程尸一头，调度、规控相关，欢迎交流。
 
 成长历程/技术栈：
 
@@ -19,6 +19,16 @@
 - 最优化
 - 机器学习/强化学习
 - C++/Python
+
+## 喜欢的 Up 主
+
+- [老王在中国](https://space.bilibili.com/3537122973714533)
+- [Warma](https://space.bilibili.com/53456)
+- [小文哥吃吃吃](https://space.bilibili.com/476704454)
+
+## 喜欢的游戏
+
+原 & 猿，没精力玩，可能是长大了吧。
 
 ## 💌 联系方式
 
