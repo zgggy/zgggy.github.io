@@ -1,4 +1,4 @@
-# docs
+# blog-v2
 
 由 `scripts/build-blog-v2.mjs` 生成。
 

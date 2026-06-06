@@ -1,3 +1,5 @@
 .vscode/
+.trae/
+.dbg/
 *.bkp
 .DS_Store

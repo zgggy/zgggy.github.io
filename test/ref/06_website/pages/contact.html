@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="联系 Starletto - 技术支持与合作咨询">
+    <title>联系我们 - Starletto</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link rel="icon" type="image/svg+xml" href="../images/favicon.svg">
+</head>
+<body>
+    <header>
+        <div class="container header-content">
+            <a href="../index.html" class="logo">
+                Star<span>letto</span>
+            </a>
+            <button class="mobile-menu-btn" aria-label="菜单">☰</button>
+            <nav>
+                <a href="../index.html" class="nav-link">首页</a>
+                <a href="features.html" class="nav-link">功能特性</a>
+                <a href="architecture.html" class="nav-link">架构设计</a>
+                <a href="cases.html" class="nav-link">案例展示</a>
+                <a href="about.html" class="nav-link">关于我们</a>
+                <a href="contact.html" class="nav-link active">联系我们</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1 class="fade-in">联系我们</h1>
+                <p class="fade-in">
+                    我们期待与您交流，共同推动自动驾驶技术发展
+                </p>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container">
+                <h2 class="section-title">联系方式</h2>
+                <p class="section-subtitle">
+                    多种渠道，随时为您服务
+                </p>
+                <div class="features-grid">
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">📧</div>
+                        <h3>电子邮件</h3>
+                        <p>
+                            技术支持：support@starletto.io<br>
+                            商务合作：business@starletto.io<br>
+                            一般咨询：info@starletto.io
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">💬</div>
+                        <h3>在线社区</h3>
+                        <p>
+                            GitHub：github.com/starletto<br>
+                            论坛：discuss.starletto.io<br>
+                            Discord：discord.gg/starletto
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">📍</div>
+                        <h3>办公地址</h3>
+                        <p>
+                            中国 · 北京<br>
+                            海淀区中关村科技园<br>
+                            （具体地址请邮件联系）
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" style="background: var(--color-surface);">
+            <div class="container">
+                <h2 class="section-title">发送消息</h2>
+                <p class="section-subtitle">
+                    填写下方表单，我们会尽快回复您
+                </p>
+                <form class="contact-form fade-in" id="contactForm">
+                    <div class="form-group">
+                        <label class="form-label" for="name">姓名 *</label>
+                        <input type="text" id="name" name="name" class="form-input" required placeholder="请输入您的姓名">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="email">邮箱 *</label>
+                        <input type="email" id="email" name="email" class="form-input" required placeholder="请输入您的邮箱地址">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="company">公司/机构</label>
+                        <input type="text" id="company" name="company" class="form-input" placeholder="请输入您的公司或机构名称">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="subject">主题 *</label>
+                        <select id="subject" name="subject" class="form-input" required>
+                            <option value="">请选择咨询主题</option>
+                            <option value="technical">技术支持</option>
+                            <option value="business">商务合作</option>
+                            <option value="contribution">代码贡献</option>
+                            <option value="documentation">文档问题</option>
+                            <option value="other">其他咨询</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="message">消息内容 *</label>
+                        <textarea id="message" name="message" class="form-textarea" required placeholder="请详细描述您的问题或建议..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">
+                        发送消息
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container">
+                <h2 class="section-title">常见问题</h2>
+                <p class="section-subtitle">
+                    快速找到您需要的答案
+                </p>
+                <div class="features-grid">
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">❓</div>
+                        <h3>如何开始使用 Starletto？</h3>
+                        <p>
+                            请访问我们的 GitHub 仓库，阅读快速开始文档。
+                            我们提供了详细的安装指南和示例代码，帮助您快速上手。
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">❓</div>
+                        <h3>Starletto 是免费的吗？</h3>
+                        <p>
+                            是的，Starletto 是完全开源免费的项目。
+                            我们采用 Apache 2.0 许可证，您可以自由使用、修改和分发。
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">❓</div>
+                        <h3>如何贡献代码？</h3>
+                        <p>
+                            请查看 GitHub 上的贡献指南。我们欢迎所有形式的贡献，
+                            包括代码、文档、测试等。提交 Pull Request 前请确保通过所有测试。
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">❓</div>
+                        <h3>支持哪些平台？</h3>
+                        <p>
+                            目前主要支持 Linux 平台（Ubuntu 20.04+）。
+                            我们计划在未来支持更多平台，包括 Windows 和 macOS。
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">❓</div>
+                        <h3>有商业支持吗？</h3>
+                        <p>
+                            我们提供商业技术支持服务，包括定制开发、技术咨询、培训等。
+                            请通过 business@starletto.io 联系我们了解详情。
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">❓</div>
+                        <h3>如何报告 Bug？</h3>
+                        <p>
+                            请在 GitHub Issues 中提交 Bug 报告。
+                            提供详细的复现步骤、系统环境和日志信息，帮助我们快速定位问题。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" style="background: var(--color-surface);">
+            <div class="container">
+                <h2 class="section-title">技术支持</h2>
+                <p class="section-subtitle">
+                    专业的技术团队为您提供全方位支持
+                </p>
+                <div class="about-stats">
+                    <div class="stat fade-in">
+                        <div class="stat-value">24/7</div>
+                        <div class="stat-label">在线支持</div>
+                    </div>
+                    <div class="stat fade-in">
+                        <div class="stat-value">&lt;24h</div>
+                        <div class="stat-label">响应时间</div>
+                    </div>
+                    <div class="stat fade-in">
+                        <div class="stat-value">98%</div>
+                        <div class="stat-label">问题解决率</div>
+                    </div>
+                    <div class="stat fade-in">
+                        <div class="stat-value">5星</div>
+                        <div class="stat-label">用户评价</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="container">
+                <h2 class="section-title">社交媒体</h2>
+                <p class="section-subtitle">
+                    关注我们，获取最新动态
+                </p>
+                <div class="features-grid">
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">🐦</div>
+                        <h3>Twitter</h3>
+                        <p>
+                            关注 @starletto_io<br>
+                            获取项目最新动态、技术分享<br>
+                            和社区活动信息
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">📺</div>
+                        <h3>YouTube</h3>
+                        <p>
+                            订阅 Starletto 官方频道<br>
+                            观看技术教程、演示视频<br>
+                            和会议演讲录像
+                        </p>
+                    </div>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">💼</div>
+                        <h3>LinkedIn</h3>
+                        <p>
+                            关注 Starletto 公司主页<br>
+                            了解团队动态、招聘信息<br>
+                            和行业洞察
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Starletto</h4>
+                    <p style="color: var(--color-gray-400); font-size: 0.875rem; line-height: 1.7;">
+                        高性能自动驾驶系统框架<br>
+                        让自动驾驶开发更简单
+                    </p>
+                </div>
+                <div class="footer-section">
+                    <h4>快速链接</h4>
+                    <ul class="footer-links">
+                        <li><a href="features.html">功能特性</a></li>
+                        <li><a href="architecture.html">架构设计</a></li>
+                        <li><a href="cases.html">案例展示</a></li>
+                        <li><a href="about.html">关于我们</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>技术文档</h4>
+                    <ul class="footer-links">
+                        <li><a href="#">快速开始</a></li>
+                        <li><a href="#">API 文档</a></li>
+                        <li><a href="#">开发指南</a></li>
+                        <li><a href="#">最佳实践</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>社区</h4>
+                    <ul class="footer-links">
+                        <li><a href="#">GitHub</a></li>
+                        <li><a href="#">论坛</a></li>
+                        <li><a href="#">博客</a></li>
+                        <li><a href="contact.html">联系我们</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2024 Starletto. All rights reserved. | 高性能自动驾驶系统框架</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="../js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>starletto API 浏览器</title>
+    <style>
+        :root {
+            --wired-black: #000000;
+            --page-ink: #1a1a1a;
+            --paper-white: #ffffff;
+            --link-blue: #057dbc;
+            --hairline-tint: #e2e8f0;
+            --caption-gray: #757575;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 24px;
+            --font-wired-mono: 'Courier New', monospace;
+            --font-apercu: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-apercu);
+            color: var(--page-ink);
+            background-color: var(--paper-white);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: var(--spacing-lg);
+        }
+
+        header {
+            border-bottom: 1px solid var(--wired-black);
+            padding-bottom: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        h1 {
+            font-family: var(--font-wired-mono);
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: var(--spacing-sm);
+            text-transform: uppercase;
+            letter-spacing: 0.92px;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: var(--caption-gray);
+        }
+
+        .api-nav {
+            display: flex;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+            flex-wrap: wrap;
+        }
+
+        .api-nav-item {
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 2px solid var(--wired-black);
+            border-radius: 0;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            font-family: var(--font-apercu);
+            font-weight: 700;
+        }
+
+        .api-nav-item:hover {
+            background-color: var(--wired-black);
+            color: var(--paper-white);
+        }
+
+        .api-nav-item.active {
+            background-color: var(--wired-black);
+            color: var(--paper-white);
+            border-color: var(--wired-black);
+        }
+
+        .api-content {
+            border: 1px solid var(--wired-black);
+            border-radius: 0;
+            overflow: hidden;
+        }
+
+        .api-content-header {
+            background-color: var(--wired-black);
+            padding: var(--spacing-md);
+            border-bottom: 1px solid var(--wired-black);
+        }
+
+        .api-content-header h2 {
+            font-family: var(--font-wired-mono);
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--paper-white);
+            text-transform: uppercase;
+            letter-spacing: 0.92px;
+            margin: 0;
+        }
+
+        .api-content-body {
+            padding: var(--spacing-lg);
+        }
+
+        .api-section {
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .api-section h2 {
+            font-family: var(--font-wired-mono);
+            font-size: 18px;
+            margin-bottom: var(--spacing-md);
+            padding-bottom: var(--spacing-sm);
+            border-bottom: 1px solid var(--wired-black);
+            text-transform: uppercase;
+            letter-spacing: 0.92px;
+        }
+
+        .api-section h3 {
+            font-size: 16px;
+            margin-top: var(--spacing-md);
+            margin-bottom: var(--spacing-sm);
+            font-family: var(--font-apercu);
+            font-weight: 700;
+        }
+
+        .api-class {
+            margin-bottom: var(--spacing-md);
+            padding: var(--spacing-md);
+            border: 1px solid var(--hairline-tint);
+            border-radius: 0;
+        }
+
+        .api-class h4 {
+            font-family: var(--font-wired-mono);
+            font-size: 14px;
+            margin-bottom: var(--spacing-sm);
+            text-transform: uppercase;
+            letter-spacing: 0.92px;
+        }
+
+        .api-method {
+            margin-left: var(--spacing-md);
+            margin-top: var(--spacing-sm);
+            padding: var(--spacing-sm);
+            background-color: #f8f9fa;
+            border-radius: 0;
+        }
+
+        .api-method-signature {
+            font-family: var(--font-wired-mono);
+            font-size: 13px;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .api-method-description {
+            font-size: 13px;
+            color: var(--caption-gray);
+        }
+
+        .api-enum {
+            margin-bottom: var(--spacing-md);
+            padding: var(--spacing-md);
+            border: 1px solid var(--hairline-tint);
+            border-radius: 0;
+        }
+
+        .api-enum h4 {
+            font-family: var(--font-wired-mono);
+            font-size: 14px;
+            margin-bottom: var(--spacing-sm);
+            text-transform: uppercase;
+            letter-spacing: 0.92px;
+        }
+
+        .api-enum-item {
+            margin-left: var(--spacing-md);
+            font-family: var(--font-wired-mono);
+            font-size: 13px;
+        }
+
+        .api-struct {
+            margin-bottom: var(--spacing-md);
+            padding: var(--spacing-md);
+            border: 1px solid var(--hairline-tint);
+            border-radius: 0;
+        }
+
+        .api-struct h4 {
+            font-family: var(--font-wired-mono);
+            font-size: 14px;
+            margin-bottom: var(--spacing-sm);
+            text-transform: uppercase;
+            letter-spacing: 0.92px;
+        }
+
+        .api-struct-field {
+            margin-left: var(--spacing-md);
+            font-family: var(--font-wired-mono);
+            font-size: 13px;
+        }
+
+        .code-block {
+            font-family: var(--font-wired-mono);
+            font-size: 13px;
+            background-color: #f8f9fa;
+            padding: var(--spacing-md);
+            border-radius: 0;
+            overflow-x: auto;
+            margin: var(--spacing-sm) 0;
+        }
+
+        pre {
+            font-family: var(--font-wired-mono);
+            font-size: 13px;
+            background-color: #f8f9fa;
+            padding: var(--spacing-md);
+            border-radius: 0;
+            overflow-x: auto;
+            margin: var(--spacing-sm) 0;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: var(--spacing-lg);
+            padding: var(--spacing-sm) var(--spacing-md);
+            border: 2px solid var(--wired-black);
+            border-radius: 0;
+            text-decoration: none;
+            color: var(--page-ink);
+            transition: all 0.15s ease;
+            font-family: var(--font-apercu);
+            font-weight: 700;
+        }
+
+        .back-link:hover {
+            background-color: var(--wired-black);
+            color: var(--paper-white);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>starletto API 浏览器</h1>
+            <p class="subtitle">探索 starletto 的核心 API 接口</p>
+        </header>
+
+        <div class="api-nav">
+            <div class="api-nav-item active" data-api="message_bus">MessageBus</div>
+            <div class="api-nav-item" data-api="channel_registry">ChannelRegistry</div>
+            <div class="api-nav-item" data-api="service_bus">ServiceBus</div>
+        </div>
+
+        <div class="api-content">
+            <div class="api-content-header">
+                <h2 id="api-title">MessageBus API</h2>
+            </div>
+            <div class="api-content-body">
+                <!-- MessageBus API -->
+                <div id="message_bus" class="api-section">
+                    <h2>MessageBus API</h2>
+                    
+                    <div class="api-enum">
+                        <h4>DropPolicy</h4>
+                        <div class="api-enum-item">KEEP_LAST</div>
+                        <div class="api-enum-item">DROP_NEWEST</div>
+                    </div>
+
+                    <div class="api-enum">
+                        <h4>AckMode</h4>
+                        <div class="api-enum-item">NO_ACK</div>
+                        <div class="api-enum-item">BLOCKING</div>
+                        <div class="api-enum-item">FIRE_AND_FORGET</div>
+                    </div>
+
+                    <div class="api-struct">
+                        <h4>ChannelOptions</h4>
+                        <div class="api-struct-field">uint32_t depth{0}</div>
+                        <div class="api-struct-field">DropPolicy drop_policy{DropPolicy::KEEP_LAST}</div>
+                        <div class="api-struct-field">bool reliable{false}</div>
+                    </div>
+
+                    <div class="api-struct">
+                        <h4>MessageView</h4>
+                        <div class="api-struct-field">star::base::TypedConstPtr payload</div>
+                        <div class="api-struct-field">star::schema::SchemaTypeId schema_type_id</div>
+                        <div class="api-struct-field">CorrelationId correlation_id</div>
+                    </div>
+
+                    <div class="api-struct">
+                        <h4>MessageSerializer</h4>
+                        <div class="api-struct-field">size_t payload_size_hint{0}</div>
+                        <div class="api-struct-field">std::function&lt;std::vector&lt;uint8_t&gt;()&gt; encode_binary</div>
+                        <div class="api-struct-field">std::function&lt;size_t(uint8_t*, size_t)&gt; encode_into</div>
+                    </div>
+
+                    <div class="api-struct">
+                        <h4>SerializedMessage</h4>
+                        <div class="api-struct-field">MessageView view</div>
+                        <div class="api-struct-field">MessageSerializer serializer</div>
+                    </div>
+
+                    <div class="api-struct">
+                        <h4>ChannelDescriptor</h4>
+                        <div class="api-struct-field">std::string name</div>
+                        <div class="api-struct-field">std::string type_name</div>
+                        <div class="api-struct-field">star::schema::SchemaTypeId schema_type_id</div>
+                        <div class="api-struct-field">ChannelOptions options</div>
+                    </div>
+
+                    <div class="api-struct">
+                        <h4>DeliveryResult</h4>
+                        <div class="api-struct-field">bool accepted{false}</div>
+                        <div class="api-struct-field">std::string message</div>
+                        <div class="api-struct-field">int64_t latency_us{0}</div>
+                    </div>
+
+                    <div class="api-struct">
+                        <h4>Port</h4>
+                        <div class="api-struct-field">std::string component_name</div>
+                        <div class="api-struct-field">std::string port_name</div>
+                        <div class="api-struct-field">bool is_input{true}</div>
+                    </div>
+
+                    <div class="api-enum">
+                        <h4>WriteStatus</h4>
+                        <div class="api-enum-item">OK</div>
+                        <div class="api-enum-item">BUS_EXPIRED</div>
+                        <div class="api-enum-item">CHANNEL_UNKNOWN</div>
+                        <div class="api-enum-item">CHANNEL_NOT_READY</div>
+                        <div class="api-enum-item">SERIALIZER_REQUIRED</div>
+                        <div class="api-enum-item">ENCODE_FAILED</div>
+                        <div class="api-enum-item">SHM_DISABLED</div>
+                        <div class="api-enum-item">SHM_DEGRADED</div>
+                        <div class="api-enum-item">EXCEPTION</div>
+                    </div>
+
+                    <div class="api-struct">
+                        <h4>WriteResult</h4>
+                        <div class="api-struct-field">WriteStatus status{WriteStatus::OK}</div>
+                        <div class="api-struct-field">bool inproc_ok{false}</div>
+                        <div class="api-struct-field">bool shm_ok{false}</div>
+                        <div class="api-struct-field">bool shm_required{false}</div>
+                        <div class="api-struct-field">std::string error_message</div>
+                    </div>
+
+                    <div class="api-class">
+                        <h4>Writer</h4>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto write(const MessageView& message) -&gt; WriteResult = 0;</div>
+                            <div class="api-method-description">写入消息（可感知成功/失败）</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto write_serialized(const SerializedMessage& message) -&gt; WriteResult = 0;</div>
+                            <div class="api-method-description">写入序列化消息（跨进程/SHM 推荐路径）</div>
+                        </div>
+                    </div>
+
+                    <div class="api-class">
+                        <h4>DeliveryWriter : public Writer</h4>
+                        <div class="api-method">
+                            <div class="api-method-signature">auto write(const MessageView& message) -&gt; WriteResult override = 0;</div>
+                            <div class="api-method-description">写入消息（可感知成功/失败）</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">auto write_serialized(const SerializedMessage& message) -&gt; WriteResult override = 0;</div>
+                            <div class="api-method-description">写入序列化消息（跨进程/SHM 推荐路径）</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto write_with_delivery(const MessageView& message, int64_t timeout_ms) -&gt; std::future&lt;DeliveryResult&gt; = 0;</div>
+                            <div class="api-method-description">写入消息并等待投递结果</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto write_serialized_with_delivery(const SerializedMessage& message, int64_t timeout_ms) -&gt; std::future&lt;DeliveryResult&gt; = 0;</div>
+                            <div class="api-method-description">写入序列化消息并等待投递结果</div>
+                        </div>
+                    </div>
+
+                    <div class="api-class">
+                        <h4>Reader</h4>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto peek_latest() const -> std::optional<MessageView> { return std::nullopt; }</div>
+                            <div class="api-method-description">查看最新消息</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto has_data() const -> bool { return false; }</div>
+                            <div class="api-method-description">检查是否有数据</div>
+                        </div>
+                    </div>
+
+                    <div class="api-class">
+                        <h4>MessageBus</h4>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual void declare_channel(const ChannelDescriptor& descriptor) = 0;</div>
+                            <div class="api-method-description">声明通道</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto create_writer(const ChannelDescriptor& descriptor) -> std::shared_ptr<Writer> = 0;</div>
+                            <div class="api-method-description">创建写入器</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto create_reader(const ChannelDescriptor& descriptor, Reader::Callback callback) -> std::shared_ptr<Reader> = 0;</div>
+                            <div class="api-method-description">创建读取器</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto create_delivery_writer(const ChannelDescriptor& descriptor) -&gt; std::shared_ptr&lt;DeliveryWriter&gt; = 0;</div>
+                            <div class="api-method-description">创建投递语义写入器</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto declared_channels() const -> std::vector<std::string> = 0;</div>
+                            <div class="api-method-description">获取已声明的通道</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto channel_stats(const std::string& channel_name) const -> std::optional<ChannelStatsSnapshot> { (void)channel_name; return std::nullopt; }</div>
+                            <div class="api-method-description">获取通道统计信息</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto all_channel_stats() const -> std::vector<ChannelStatsSnapshot> { return {}; }</div>
+                            <div class="api-method-description">获取所有通道统计信息</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto peek_latest(const std::string& channel_name) const -> std::optional<MessageView> { (void)channel_name; return std::nullopt; }</div>
+                            <div class="api-method-description">查看通道最新消息</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual auto dump_stats_lines() const -> std::vector<std::string> { return {}; }</div>
+                            <div class="api-method-description">导出统计信息</div>
+                        </div>
+                    </div>
+
+                    <div class="api-class">
+                        <h4>RecordableBus</h4>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual void enable_recorder(const std::string& file_path) = 0;</div>
+                            <div class="api-method-description">启用记录器</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual void enable_record_channel(const std::string& channel) = 0;</div>
+                            <div class="api-method-description">启用通道记录</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual void disable_recorder() = 0;</div>
+                            <div class="api-method-description">禁用记录器</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">virtual void disable_record_channel(const std::string& channel) = 0;</div>
+                            <div class="api-method-description">禁用通道记录</div>
+                        </div>
+                    </div>
+
+                    <h3>使用示例</h3>
+                    <div class="code-block">
+// 创建 MessageBus 实例
+auto message_bus = CreateMessageBus();
+
+// 声明通道
+ChannelDescriptor descriptor;
+descriptor.name = "/perception/output";
+descriptor.type_name = "PerceptionOutput";
+descriptor.schema_type_id = GetSchemaTypeId<PerceptionOutput>();
+message_bus->declare_channel(descriptor);
+
+// 创建 Writer
+auto writer = message_bus->create_writer(descriptor);
+
+// 发送消息
+MessageView message;
+message.payload = star::base::TypedConstPtr::from(std::make_shared<const PerceptionOutput>(output));
+message.schema_type_id = GetSchemaTypeId<PerceptionOutput>();
+message.correlation_id = CorrelationId::generate();
+const auto result = writer->write(message);
+if (!result.ok()) {
+    // 处理写失败（例如抛异常或降级）
+}
+
+// 创建 Reader
+auto reader = message_bus->create_reader(descriptor, [](const MessageView& msg) {
+    if (auto data = msg.payload.as<PerceptionOutput>()) {
+        // 处理消息
+    }
+});
+                    </div>
+                </div>
+
+                <!-- ChannelRegistry API -->
+                <div id="channel_registry" class="api-section" style="display: none;">
+                    <h2>ChannelRegistry API</h2>
+                    
+                    <div class="api-enum">
+                        <h4>ShmRouteMode</h4>
+                        <div class="api-enum-item">INPROC_ONLY</div>
+                        <div class="api-enum-item">SHM_WRITE</div>
+                        <div class="api-enum-item">SHM_READ</div>
+                        <div class="api-enum-item">SHM_READ_WRITE</div>
+                    </div>
+
+                    <div class="api-class">
+                        <h4>ChannelRegistry</h4>
+                        <div class="api-method">
+                            <div class="api-method-signature">void configure_local_group(std::string local_group)</div>
+                            <div class="api-method-description">配置本地组</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">void configure_route_plan(const std::string& route_plan)</div>
+                            <div class="api-method-description">配置路由计划</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">void register_writer(const std::string& channel, const std::string& process_group)</div>
+                            <div class="api-method-description">注册写入器</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">void register_reader(const std::string& channel, const std::string& process_group)</div>
+                            <div class="api-method-description">注册读取器</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">auto local_group() const -> std::string</div>
+                            <div class="api-method-description">获取本地组</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">auto shm_route_mode(const std::string& channel) const -&gt; ShmRouteMode</div>
+                            <div class="api-method-description">获取单通道的 SHM 路由模式（统一事实源）</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">auto should_write_shm(const std::string& channel) const -> bool</div>
+                            <div class="api-method-description">检查是否应该写入共享内存</div>
+                        </div>
+                        <div class="api-method">
+                            <div class="api-method-signature">auto should_read_shm(const std::string& channel) const -> bool</div>
+                            <div class="api-method-description">检查是否应该从共享内存读取</div>
+                        </div>
+                    </div>
+
+                    <h3>使用示例</h3>
+                    <div class="code-block">
+// 创建 ChannelRegistry 实例
+ChannelRegistry registry;
+
+// 配置本地组
+registry.configure_local_group("perception");
+
+// 配置路由计划
+std::string route_plan = R"(
+{
+  "routes": [
+    {
+      "channel": "/perception/output",
+      "producer": "perception",
+      "consumers": ["planning", "control"]
+    }
+  ]
+}
+)";
+registry.configure_route_plan(route_plan);
+
+// 注册写入器
+registry.register_writer("/perception/output", "perception");
+
+// 检查是否应该写入共享内存
+bool should_write = registry.should_write_shm("/perception/output");
+auto mode = registry.shm_route_mode("/perception/output");
+                    </div>
+                </div>
+
+                <!-- ServiceBus API -->
+                <div id="service_bus" class="api-section" style="display: none;">
+                    <h2>ServiceBus API</h2>
+                    <p>ServiceBus API 文档正在整理中...</p>
+                </div>
+            </div>
+        </div>
+
+        <a href="index.html" class="back-link">返回首页</a>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const navItems = document.querySelectorAll('.api-nav-item');
+            const apiSections = document.querySelectorAll('.api-section');
+            const apiTitle = document.getElementById('api-title');
+
+            navItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const apiName = this.getAttribute('data-api');
+
+                    // 更新导航状态
+                    navItems.forEach(navItem => navItem.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // 更新内容
+                    apiSections.forEach(section => {
+                        section.style.display = 'none';
+                    });
+                    document.getElementById(apiName).style.display = 'block';
+
+                    // 更新标题
+                    const titles = {
+                        'message_bus': 'MessageBus API',
+                        'channel_registry': 'ChannelRegistry API',
+                        'service_bus': 'ServiceBus API'
+                    };
+                    apiTitle.textContent = titles[apiName];
+                });
+            });
+        });
+    </script>
+</body>
+</html>

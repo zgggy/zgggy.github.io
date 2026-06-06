@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="starletto - 高性能自动驾驶系统框架">
+    <title>starletto</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="icon" type="image/svg+xml" href="images/favicon.svg">
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-left" id="logo">
+                STARLETTO
+            </div>
+            <div class="header-right">
+                <span class="header-link" id="what-is">什么是</span>
+                <span class="header-link" id="about-us">关于我们</span>
+                <a href="#" class="header-link">GitHub</a>
+                <span class="header-button" id="login">登录</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Top Three Columns -->
+        <section class="top-section">
+            <!-- Left Column: Introduction -->
+            <div class="section-left">
+                <h1 class="section-subtitle">STARLETTO</h1>
+                <p class="section-text">
+                    一个高性能、模块化的自动驾驶系统框架，提供完整的感知、规划、控制解决方案。
+                    借鉴 Apollo 和 Autoware 的最佳实践，为开发者打造更简洁、更高效的开发体验。
+                </p>
+                <p class="section-text">
+                    starletto 采用现代 C++ 架构，支持多传感器融合、高精度定位、智能路径规划和实时车辆控制，
+                    为自动驾驶技术的研发和应用提供强大的基础平台。
+                </p>
+                <a href="#documentation" class="read-more">查阅更多 ↓</a>
+            </div>
+
+            <!-- Center Column: Content -->
+            <div class="section-center">
+            </div>
+
+            <!-- Right Column: Simulation Only -->
+            <div class="section-right">
+                <div class="section-right-top">
+                    <canvas class="simulation-canvas" id="simulationCanvas" width="400" height="200"></canvas>
+                </div>
+                <div class="section-right-bottom">
+                    <canvas class="simulation-canvas" id="clusteringCanvas" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Horizontal Scroll Section -->
+        <section class="horizontal-scroll">
+            <div class="scroll-container">
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🚗</div>
+                    <div class="scroll-item-title">城市道路</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🛣️</div>
+                    <div class="scroll-item-title">高速公路</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🏭</div>
+                    <div class="scroll-item-title">园区物流</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🚧</div>
+                    <div class="scroll-item-title">矿区自动驾驶</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🌾</div>
+                    <div class="scroll-item-title">农业机械</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🚌</div>
+                    <div class="scroll-item-title">园区摆渡</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🅿️</div>
+                    <div class="scroll-item-title">自主泊车</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🚚</div>
+                    <div class="scroll-item-title">物流配送</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🏥</div>
+                    <div class="scroll-item-title">医疗急救</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🎓</div>
+                    <div class="scroll-item-title">教育科研</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🚲</div>
+                    <div class="scroll-item-title">共享出行</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🏙️</div>
+                    <div class="scroll-item-title">智慧城市</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🚛</div>
+                    <div class="scroll-item-title">长途货运</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🏖️</div>
+                    <div class="scroll-item-title">旅游景区</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🏪</div>
+                    <div class="scroll-item-title">零售配送</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🛒</div>
+                    <div class="scroll-item-title">超市购物</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🏠</div>
+                    <div class="scroll-item-title">社区服务</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🚑</div>
+                    <div class="scroll-item-title">紧急救援</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🛩️</div>
+                    <div class="scroll-item-title">机场服务</div>
+                </div>
+                <div class="scroll-item">
+                    <div class="scroll-item-icon">🚝</div>
+                    <div class="scroll-item-title">轨道交通</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Documentation Section -->
+        <section class="documentation" id="documentation">
+            <div class="doc-layout">
+                <!-- Left: Categories (Fixed Position) -->
+                <div class="doc-categories fixed-filter">
+                    <div class="category-item active" data-category="all">所有</div>
+                    <div class="category-item" data-category="architecture">架构设计</div>
+                    <div class="category-item" data-category="modules">模块设计</div>
+                    <div class="category-item" data-category="algorithms">算法</div>
+                    <div class="category-item" data-category="simulation">仿真</div>
+                    <div class="category-item" data-category="deployment">部署</div>
+                    <div class="category-item" data-category="api">API 文档</div>
+                    <div class="category-item" data-category="examples">示例代码</div>
+                    <div class="category-item" data-category="faq">常见问题</div>
+                </div>
+
+                <!-- Right: Documentation List -->
+                <div class="doc-list">
+                    <!-- All Documents -->
+                    <div class="doc-item" data-category="architecture">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">系统架构设计</div>
+                            <div class="doc-item-meta">架构设计</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 系统的整体架构设计，包括模块划分、数据流和通信机制。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="modules">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">感知模块设计</div>
+                            <div class="doc-item-meta">模块设计</div>
+                        </div>
+                        <div class="doc-item-text">
+                            环境感知模块的详细设计，包括传感器融合、目标检测和跟踪算法。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="algorithms">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">路径规划算法</div>
+                            <div class="doc-item-meta">算法</div>
+                        </div>
+                        <div class="doc-item-text">
+                            自动驾驶路径规划算法的详细说明，包括全局规划和局部规划。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="simulation">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">仿真系统使用指南</div>
+                            <div class="doc-item-meta">仿真</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 仿真系统的使用方法，包括场景创建、数据记录和回放。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="deployment">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">系统部署指南</div>
+                            <div class="doc-item-meta">部署</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 系统的部署方法，包括硬件要求、软件安装和配置。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="api">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">API 参考文档</div>
+                            <div class="doc-item-meta">API 文档</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 系统的 API 参考文档，包括所有模块的接口定义。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="examples">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">快速开始示例</div>
+                            <div class="doc-item-meta">示例代码</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 系统的快速开始示例，帮助开发者快速上手。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="faq">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">常见问题解答</div>
+                            <div class="doc-item-meta">常见问题</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 系统的常见问题解答，帮助开发者解决遇到的问题。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="architecture">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">数据流程设计</div>
+                            <div class="doc-item-meta">架构设计</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 系统的数据流程设计，包括数据采集、处理和分发机制。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="modules">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">定位模块设计</div>
+                            <div class="doc-item-meta">模块设计</div>
+                        </div>
+                        <div class="doc-item-text">
+                            高精度定位模块的详细设计，包括多源融合定位算法。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="algorithms">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">控制算法</div>
+                            <div class="doc-item-meta">算法</div>
+                        </div>
+                        <div class="doc-item-text">
+                            车辆控制算法的详细说明，包括 PID、MPC 等控制策略。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="simulation">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">场景编辑器使用</div>
+                            <div class="doc-item-meta">仿真</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 场景编辑器的使用方法，包括场景创建和编辑。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="modules">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">预测模块设计</div>
+                            <div class="doc-item-meta">模块设计</div>
+                        </div>
+                        <div class="doc-item-text">
+                            障碍物行为预测模块的详细设计，包括轨迹预测和意图识别。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="algorithms">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">机器学习模型</div>
+                            <div class="doc-item-meta">算法</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 中使用的机器学习模型，包括目标检测、语义分割等。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="deployment">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">硬件选型指南</div>
+                            <div class="doc-item-meta">部署</div>
+                        </div>
+                        <div class="doc-item-text">
+                            自动驾驶系统的硬件选型指南，包括传感器、计算平台等。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="api">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">SDK 开发指南</div>
+                            <div class="doc-item-meta">API 文档</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto SDK 的开发指南，包括如何使用 SDK 开发自定义应用。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="examples">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">传感器配置示例</div>
+                            <div class="doc-item-meta">示例代码</div>
+                        </div>
+                        <div class="doc-item-text">
+                            不同传感器配置的示例，帮助开发者快速配置传感器。
+                        </div>
+                    </div>
+
+                    <div class="doc-item" data-category="faq">
+                        <div class="doc-item-header">
+                            <div class="doc-item-title">性能优化指南</div>
+                            <div class="doc-item-meta">常见问题</div>
+                        </div>
+                        <div class="doc-item-text">
+                            starletto 系统的性能优化指南，帮助开发者优化系统性能。
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-left">
+                <span class="footer-logo" id="company-logo">STARLETTO</span>
+                <span class="footer-separator">|</span>
+                <span class="footer-logo">STARLETTO</span>
+            </div>
+            <div class="footer-center">
+                高性能自动驾驶系统框架
+            </div>
+            <div class="footer-right">
+                <span class="footer-link" id="terms">条款</span>
+                <span class="footer-separator">|</span>
+                <span class="footer-link" id="privacy">隐私</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Modal -->
+    <div class="modal" id="docModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">文档标题</h2>
+                <button class="modal-close" id="modalClose">×</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- 文档内容将通过 JavaScript 动态填充 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="js/resource_loader.js"></script>
+    <script src="js/performance_monitor.js"></script>
+    <script src="js/renderer.js"></script>
+    <script src="js/cache_manager.js"></script>
+    <script src="js/modal_content.js"></script>
+    <script src="js/main.js"></script>
+</body>
+
+</html>

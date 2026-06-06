@@ -6,4 +6,6 @@
 
 [start](/README.md "派大栓的个人博客")
 
+[新版文章站（测试）](/test/blog-v2/ "新版文章站（测试）")
+
 ![vio](src/violet_with_flower.jpg)
