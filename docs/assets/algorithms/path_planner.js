@@ -3,8 +3,10 @@ class PathPlanner {
     constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
-        this.width = canvas.width;
-        this.height = canvas.height; // 使用canvas的实际高度
+        this.baseWidth = canvas.width;
+        this.baseHeight = canvas.height;
+        this.width = this.baseWidth;
+        this.height = this.baseHeight; // 使用canvas的实际高度
         
         // 配置参数
         this.padding = 20; // 减少padding，使显示更占满canvas
@@ -22,10 +24,12 @@ class PathPlanner {
         // 浮动参数
         this.floatTime = 0;
         this.floatOffset = [];
+        this.handleResize = () => this.resizeCanvas();
+
+        this.resizeCanvas();
         
         // 初始化3个随机障碍物，在l=-2~+2附近，且s值不要太近
         this.obstacles = [];
-        const centerX = this.padding + (this.width - 2 * this.padding) / 2;
         const centerY = this.height / 2;
         
         // 确保障碍物之间的最小距离（以像素为单位）
@@ -33,8 +37,8 @@ class PathPlanner {
         const maxAttempts = 100; // 最大尝试次数，避免死循环
         
         // s方向的限制范围（单位：米）
-        const sMinInit = 5; // s不能小于5米
-        const sMaxInit = (this.width - 2 * this.padding) / this.meterToPixel - 5; // s不能大于max_s-5米
+        const sMinInit = 0;
+        const sMaxInit = (this.width - this.obstacleSize) / this.meterToPixel;
         
         for (let i = 0; i < 3; i++) {
             let x, s;
@@ -45,7 +49,7 @@ class PathPlanner {
             while (!validPosition && attempts < maxAttempts) {
                 // s范围：sMinInit~+sMaxInit米，转换为像素（沿路径方向分布）
                 s = sMinInit + Math.random() * (sMaxInit - sMinInit); // sMinInit to sMaxInit
-                x = this.padding + s * this.meterToPixel;
+                x = s * this.meterToPixel;
                 
                 // 检查与已有障碍物的距离
                 validPosition = true;
@@ -64,12 +68,11 @@ class PathPlanner {
                 // 直接在s轴上均匀分布
                 const step = (sMaxInit - sMinInit) / 2;
                 s = sMinInit + i * step; // sMinInit, sMinInit+step, sMinInit+2*step
-                x = this.padding + s * this.meterToPixel;
+                x = s * this.meterToPixel;
             }
             
             // l范围：-2~+2米，转换为像素（在中心线附近）
-            const l = (Math.random() * 4 - 2); // -2 to 2
-            const y = centerY - l * this.meterToPixel;
+            const y = Math.random() * (this.height - this.obstacleSize);
             
             this.obstacles.push({
                 x: x,
@@ -104,24 +107,72 @@ class PathPlanner {
         // 初始化
         this.updatePath();
         this.startAnimation();
+        window.addEventListener('resize', this.handleResize, { passive: true });
+    }
+
+    resizeCanvas() {
+        const rect = this.canvas.getBoundingClientRect();
+        const measuredWidth = rect.width;
+        const measuredHeight = rect.height;
+        const nextWidth = Math.max(1, Math.round(measuredWidth > 2 ? measuredWidth : this.baseWidth));
+        const nextHeight = Math.max(1, Math.round(measuredHeight > 2 ? measuredHeight : this.baseHeight));
+        const prevWidth = this.width || nextWidth;
+        const prevHeight = this.height || nextHeight;
+        const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+
+        this.canvas.width = Math.round(nextWidth * dpr);
+        this.canvas.height = Math.round(nextHeight * dpr);
+        this.width = nextWidth;
+        this.height = nextHeight;
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.ctx.imageSmoothingEnabled = true;
+
+        if (prevWidth !== nextWidth || prevHeight !== nextHeight) {
+            this.scaleSceneForResize(prevWidth, prevHeight);
+        }
+    }
+
+    scaleSceneForResize(prevWidth, prevHeight) {
+        if (!prevWidth || !prevHeight || !Array.isArray(this.obstacles) || !this.obstacles.length) return;
+
+        const scaleX = this.width / prevWidth;
+        const scaleY = this.height / prevHeight;
+
+        for (const obstacle of this.obstacles) {
+            obstacle.x *= scaleX;
+            obstacle.y *= scaleY;
+        }
+
+        for (const offset of this.floatOffset) {
+            offset.x *= scaleX;
+            offset.y *= scaleY;
+            if (typeof offset.targetX === 'number') offset.targetX *= scaleX;
+            if (typeof offset.targetY === 'number') offset.targetY *= scaleY;
+        }
+
+        if (this.mousePos) {
+            this.mousePos.x *= scaleX;
+            this.mousePos.y *= scaleY;
+        }
+        this.updatePath();
+    }
+
+    getCanvasPoint(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.width / rect.width;
+        const scaleY = this.height / rect.height;
+        return {
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
+        };
     }
     
     // 更新浮动 - 改为目标点移动方式（使用绝对位置）
     updateFloat() {
-        // s方向的限制范围（单位：米）
-        const sMin = 4; // s不能小于4米
-        const sMax = (this.width - 2 * this.padding) / this.meterToPixel - 4; // s不能大于max_s-4米
-        const sMinPixel = this.padding + sMin * this.meterToPixel;
-        const sMaxPixel = this.padding + sMax * this.meterToPixel - this.obstacleSize;
-        
-        // l方向的限制范围（grid范围内）
-        // lUpperBound = 4, lLowerBound = -4
-        // l=4米在上方（canvas y小），l=-4米在下方（canvas y大）
-        const centerY = this.height / 2;
-        // grid上边界（l=4，对应较小的canvas y）
-        const lMinPixel = centerY - this.lUpperBound * this.meterToPixel;
-        // grid下边界（l=-4，对应较大的canvas y）
-        const lMaxPixel = centerY - this.lLowerBound * this.meterToPixel - this.obstacleSize;
+        const sMinPixel = 0;
+        const sMaxPixel = this.width - this.obstacleSize;
+        const lMinPixel = 0;
+        const lMaxPixel = this.height - this.obstacleSize;
         
         for (let i = 0; i < this.obstacles.length; i++) {
             // 如果障碍物正在被拖动，跳过浮动
@@ -181,14 +232,7 @@ class PathPlanner {
     }
     
     handleMouseDown(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        // 计算鼠标在canvas中的实际坐标，考虑canvas的缩放
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        this.mousePos = {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
-        };
+        this.mousePos = this.getCanvasPoint(e);
         
         // 检查是否点击到障碍物（使用浮动后的位置）
         for (let i = 0; i < this.obstacles.length; i++) {
@@ -202,14 +246,7 @@ class PathPlanner {
     }
     
     handleMouseMove(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        // 计算鼠标在canvas中的实际坐标，考虑canvas的缩放
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        this.mousePos = {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
-        };
+        this.mousePos = this.getCanvasPoint(e);
         
         // 拖动障碍物
         for (let i = 0; i < this.obstacles.length; i++) {
@@ -223,13 +260,10 @@ class PathPlanner {
                 this.floatOffset[i].y = gridCenterY - this.obstacles[i].height / 2;
 
                 // 确保障碍物在边界内
-                const sMin = 4;
-                const sMax = (this.width - 2 * this.padding) / this.meterToPixel - 4;
-                const sMinPixel = this.padding + sMin * this.meterToPixel;
-                const sMaxPixel = this.padding + sMax * this.meterToPixel - this.obstacleSize;
-                const boundCenterY = this.height / 2;
-                const lMinPixel = boundCenterY - this.lUpperBound * this.meterToPixel;
-                const lMaxPixel = boundCenterY - this.lLowerBound * this.meterToPixel - this.obstacleSize;
+                const sMinPixel = 0;
+                const sMaxPixel = this.width - this.obstacleSize;
+                const lMinPixel = 0;
+                const lMaxPixel = this.height - this.obstacleSize;
 
                 this.floatOffset[i].x = Math.max(sMinPixel, Math.min(sMaxPixel, this.floatOffset[i].x));
                 this.floatOffset[i].y = Math.max(lMinPixel, Math.min(lMaxPixel, this.floatOffset[i].y));
@@ -258,17 +292,12 @@ class PathPlanner {
     }
     
     handleDoubleClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        // 计算点击在canvas中的实际坐标，考虑canvas的缩放
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        const mouseX = (e.clientX - rect.left) * scaleX;
-        const mouseY = (e.clientY - rect.top) * scaleY;
+        const { x: mouseX, y: mouseY } = this.getCanvasPoint(e);
         
         // 检查是否点击了障碍物
         let clickedObstacle = null;
         for (let i = 0; i < this.obstacles.length; i++) {
-            const obstacle = this.obstacles[i];
+            const obstacle = this.getObstaclePosition(i);
             if (this.isPointInRect({ x: mouseX, y: mouseY }, obstacle)) {
                 clickedObstacle = i;
                 break;
@@ -287,8 +316,8 @@ class PathPlanner {
             const gridY = Math.round(mouseY / this.gridSize) * this.gridSize;
             
             // 确保障碍物在画布内
-            const x = Math.max(this.padding, Math.min(this.width - this.padding - this.obstacleSize, gridX - this.obstacleSize / 2));
-            const y = Math.max(this.padding, Math.min(this.height - this.padding - this.obstacleSize, gridY - this.obstacleSize / 2));
+            const x = Math.max(0, Math.min(this.width - this.obstacleSize, gridX - this.obstacleSize / 2));
+            const y = Math.max(0, Math.min(this.height - this.obstacleSize, gridY - this.obstacleSize / 2));
             
             // 添加新障碍物，2*2米的小正方形
             this.obstacles.push({ x, y, width: this.obstacleSize, height: this.obstacleSize, dragging: false });
@@ -311,15 +340,8 @@ class PathPlanner {
     
     getBounds(s) {
         const centerY = this.height / 2;
-        
-        // 转换为像素坐标的上下边界
-        // 注意：画布y轴向下，所以上边界y值小，下边界y值大
-        let upperBound = centerY - this.lUpperBound * this.meterToPixel;
-        let lowerBound = centerY - this.lLowerBound * this.meterToPixel;
-        
-        // 障碍物不再影响边界，只返回原始边界
-        
-        return { upperBound, lowerBound, centerY };
+
+        return { upperBound: 0, lowerBound: this.height, centerY };
     }
     
     generateGrid() {
@@ -340,7 +362,7 @@ class PathPlanner {
         const path = [];
         
         // 确保路径从0,0开始
-        const startX = this.padding;
+        const startX = 0;
         
         // 生成网格
         const grid = this.generateGrid();
@@ -402,7 +424,7 @@ class PathPlanner {
             // 转换网格坐标到像素坐标
             const pixelX = startX + x * this.gridSize;
             const { upperBound, lowerBound } = this.getBounds(pixelX);
-            const pixelY = upperBound + (lowerBound - upperBound) * currentY / grid[x].length;
+            const pixelY = upperBound + currentY * this.gridSize;
             
             path.unshift({ x: pixelX, y: pixelY });
         }
@@ -415,10 +437,10 @@ class PathPlanner {
         const grid = [];
         
         // 确保路径从0,0开始
-        const startX = this.padding;
+        const startX = 0;
         
         // 确保网格的范围包括s=smax的地方
-        for (let x = startX; x <= this.width - this.padding; x += this.gridSize) {
+        for (let x = startX; x <= this.width; x += this.gridSize) {
             const row = [];
             const { upperBound, lowerBound } = this.getBounds(x);
             
@@ -533,118 +555,111 @@ class PathPlanner {
     }
     
     draw() {
-        // 清空画布
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillRect(0, 0, this.width, this.height);
-        
-        // 绘制边界和填充区域（灰色区域在网格下方）
-        this.drawBounds();
-        
-        // 绘制l=0虚线
-        this.drawCenterLine();
-        
-        // 绘制网格
-        this.drawGrid();
-        
-        // 绘制障碍物
+        this.drawSplitBackground();
         this.drawObstacles();
-        
-        // 绘制路径
-        this.drawPath();
     }
     
+    getPlanningFrame() {
+        const { upperBound, lowerBound, centerY } = this.getBounds(0);
+        const endX = Math.floor(this.width / this.gridSize) * this.gridSize;
+        return {
+            startX: 0,
+            endX,
+            upperBound,
+            lowerBound,
+            centerY
+        };
+    }
 
-    
+    getDisplayPath() {
+        if (this.path && this.path.length > 1) return this.path;
+        const { centerY } = this.getPlanningFrame();
+        return [
+            { x: 0, y: centerY },
+            { x: this.width, y: centerY }
+        ];
+    }
+
+    getPathYAtX(x) {
+        const path = this.getDisplayPath();
+        if (path.length === 0) return this.height / 2;
+        if (x <= path[0].x) return path[0].y;
+        if (x >= path[path.length - 1].x) return path[path.length - 1].y;
+
+        for (let i = 1; i < path.length; i++) {
+            const prev = path[i - 1];
+            const next = path[i];
+            if (x > next.x) continue;
+
+            const span = next.x - prev.x || 1;
+            const t = (x - prev.x) / span;
+            return prev.y + (next.y - prev.y) * t;
+        }
+
+        return path[path.length - 1].y;
+    }
+
+    traceRoundedRectPath(x, y, width, height, radius) {
+        const ctx = this.ctx;
+        const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+        ctx.beginPath();
+        ctx.moveTo(x + safeRadius, y);
+        ctx.lineTo(x + width - safeRadius, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+        ctx.lineTo(x + width, y + height - safeRadius);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+        ctx.lineTo(x + safeRadius, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+        ctx.lineTo(x, y + safeRadius);
+        ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+        ctx.closePath();
+    }
+
+    drawSplitBackground() {
+        const path = this.getDisplayPath();
+        const firstY = this.getPathYAtX(0);
+        const lastY = this.getPathYAtX(this.width);
+
+        this.ctx.fillStyle = '#fafafa';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+
+        this.ctx.fillStyle = '#9f9f9f';
+        this.ctx.beginPath();
+        this.ctx.moveTo(0, this.height);
+        this.ctx.lineTo(0, firstY);
+        this.ctx.lineTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) {
+            this.ctx.lineTo(path[i].x, path[i].y);
+        }
+        this.ctx.lineTo(this.width, lastY);
+        this.ctx.lineTo(this.width, this.height);
+        this.ctx.closePath();
+        this.ctx.fill();
+    }
+
     drawGrid() {
-        const centerY = this.height / 2;
-        
-        // 绘制网格线
-        this.ctx.strokeStyle = '#e0e0e0';
-        this.ctx.lineWidth = 0.5;
-        
-        // 垂直线（s方向）
-        for (let x = this.padding; x < this.width - this.padding; x += this.gridSize) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, this.padding);
-            this.ctx.lineTo(x, this.height - this.padding);
-            this.ctx.stroke();
-        }
-        
-        // 水平线（l方向），确保包含l=0的线
-        const lRange = this.lUpperBound - this.lLowerBound;
-        const lStep = this.gridSize / this.meterToPixel;
-        const numLines = Math.floor(lRange / lStep) + 1;
-        
-        for (let i = 0; i < numLines; i++) {
-            const l = this.lLowerBound + i * lStep;
-            const y = centerY - l * this.meterToPixel;
-            
-            this.ctx.beginPath();
-            this.ctx.moveTo(this.padding, y);
-            this.ctx.lineTo(this.width - this.padding, y);
-            this.ctx.stroke();
-        }
+        // 风格重做后不再显示道路网格。
     }
     
     drawCenterLine() {
-        const centerY = this.height / 2;
-        
-        // 绘制l=0虚线
-        this.ctx.strokeStyle = '#999';
-        this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([5, 5]);
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.padding, centerY);
-        this.ctx.lineTo(this.width - this.padding, centerY);
-        this.ctx.stroke();
-        
-        this.ctx.setLineDash([]);
+        // 风格重做后，DP 结果本身就是分界线，不再额外绘制中心虚线。
     }
     
     drawBounds() {
-        // 获取固定的边界值
-        const { upperBound, lowerBound } = this.getBounds(this.padding);
-        
-        // 计算与网格一致的终点
-        const endX = Math.floor((this.width - this.padding - this.padding) / this.gridSize) * this.gridSize + this.padding;
-        
-        // 绘制填充区域：path bound之内是灰色
-        this.ctx.fillStyle = '#f0f0f0';
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.padding, upperBound);
-        this.ctx.lineTo(endX, upperBound);
-        this.ctx.lineTo(endX, lowerBound);
-        this.ctx.lineTo(this.padding, lowerBound);
-        this.ctx.closePath();
-        this.ctx.fill();
-        
-        // 绘制边界线：细实线
-        this.ctx.strokeStyle = '#057dbc';
-        this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([]);
-        
-        // 上边界
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.padding, upperBound);
-        this.ctx.lineTo(endX, upperBound);
-        this.ctx.stroke();
-        
-        // 下边界
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.padding, lowerBound);
-        this.ctx.lineTo(endX, lowerBound);
-        this.ctx.stroke();
+        // 风格重做后不再显示道路边界线。
     }
-    
+
     drawObstacles() {
         for (let i = 0; i < this.obstacles.length; i++) {
             const obstacle = this.getObstaclePosition(i);
-            this.ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-            this.ctx.strokeStyle = '#ff0000';
-            this.ctx.lineWidth = 2;
-            this.ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
-            this.ctx.strokeRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            const centerX = obstacle.x + obstacle.width / 2;
+            const centerY = obstacle.y + obstacle.height / 2;
+            const pathY = this.getPathYAtX(centerX);
+            const isAbovePath = centerY < pathY;
+
+            this.ctx.fillStyle = isAbovePath ? '#666666' : '#f4f4f4';
+            this.traceRoundedRectPath(obstacle.x, obstacle.y, obstacle.width, obstacle.height, 7);
+            this.ctx.fill();
         }
     }
     
@@ -662,21 +677,7 @@ class PathPlanner {
     }
     
     drawPath() {
-        if (this.path.length < 2) return;
-        
-        // 绘制主轨迹线
-        // 半透明浅绿色粗实线
-        this.ctx.strokeStyle = 'rgba(76, 175, 80, 0.7)';
-        this.ctx.lineWidth = 4;
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.path[0].x, this.path[0].y);
-        
-        for (let i = 1; i < this.path.length; i++) {
-            this.ctx.lineTo(this.path[i].x, this.path[i].y);
-        }
-        
-        this.ctx.stroke();
+        // 分界仅用于切分背景，不再绘制可见线条。
     }
     
     startAnimation() {
@@ -698,3 +699,7 @@ class PathPlanner {
     }
 }
 
+window.__registerAlgorithmVisualizer?.({
+    id: 'path-planner',
+    mount: (canvas) => new PathPlanner(canvas)
+});

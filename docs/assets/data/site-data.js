@@ -27,8 +27,23 @@ window.__SITE_DATA__ = {
     "/articles/essay/what-am-i-made-of.md": "essay/what-am-i-made-of",
     "/articles/home/lovestory1.md": "lovestory1",
     "/articles/lovestory1.md": "lovestory1",
+    "/articles/hidden/midnight.md": "hidden/midnight",
     "/articles/poem/nas.md": "poem/nas"
   },
+  "algorithms": [
+    {
+      "scriptPath": "clustering.js"
+    },
+    {
+      "scriptPath": "path_following.js"
+    },
+    {
+      "scriptPath": "path_planner.js"
+    },
+    {
+      "scriptPath": "tsp.js"
+    }
+  ],
   "articles": [
     {
       "slug": "poem/late",
@@ -125,6 +140,12 @@ window.__SITE_DATA__ = {
       "section": "article",
       "mdPath": "home/lovestory1.md",
       "jsPath": ""
+    },
+    {
+      "slug": "hidden/midnight",
+      "section": "hidden",
+      "mdPath": "hidden/midnight.md",
+      "jsPath": "hidden/midnight.js"
     },
     {
       "slug": "poem/nas",

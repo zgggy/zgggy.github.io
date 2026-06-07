@@ -492,10 +492,6 @@ ${buildHeader()}
 </main>
 ${buildFooter()}
 ${buildArticleModal()}
-<script src="${joinSitePath('assets/algorithms/path_planner.js')}"></script>
-<script src="${joinSitePath('assets/algorithms/clustering.js')}"></script>
-<script src="${joinSitePath('assets/algorithms/dijkstra.js')}"></script>
-<script src="${joinSitePath('assets/algorithms/path_following.js')}"></script>
 <script src="${joinSitePath('assets/js/chrome.js')}"></script>
 <script src="${joinSitePath('assets/data/site-data.js')}"></script>
 <script src="${joinSitePath('assets/js/site.js')}"></script>
@@ -504,7 +500,7 @@ ${buildArticleModal()}
   `.trim();
 }
 
-function buildSiteData(articles) {
+function buildSiteData(articles, algorithmScripts) {
   const linkMap = {};
 
   for (const article of articles) {
@@ -523,6 +519,9 @@ function buildSiteData(articles) {
       root: SITE_ROOT
     },
     linkMap,
+    algorithms: (algorithmScripts || []).map((scriptPath) => ({
+      scriptPath
+    })),
     articles: articles.map((article) => ({
       slug: article.slug,
       section: article.section,
@@ -1669,12 +1668,7 @@ function initAlgorithms() {
   const secondCanvas = document.getElementById('algorithm-canvas-b');
   if (!firstCanvas || !secondCanvas) return;
 
-  const factories = [
-    { available: typeof PathPlanner !== 'undefined', mount: (canvas) => new PathPlanner(canvas) },
-    { available: typeof ClusteringVisualizer !== 'undefined', mount: (canvas) => new ClusteringVisualizer(canvas) },
-    { available: typeof DijkstraVisualizer !== 'undefined', mount: (canvas) => new DijkstraVisualizer(canvas) },
-    { available: typeof PathFollowingVisualizer !== 'undefined', mount: (canvas) => new PathFollowingVisualizer(canvas) }
-  ].filter((item) => item.available);
+  const factories = (window.__ALGORITHM_VISUALIZERS__ || []).filter((item) => item && typeof item.mount === 'function');
 
   if (factories.length < 2) return;
 
@@ -1682,6 +1676,72 @@ function initAlgorithms() {
   [firstCanvas, secondCanvas].forEach((canvas, index) => {
     shuffled[index].mount(canvas);
   });
+}
+
+function ensureAlgorithmRegistry() {
+  if (!Array.isArray(window.__ALGORITHM_VISUALIZERS__)) {
+    window.__ALGORITHM_VISUALIZERS__ = [];
+  }
+
+  window.__registerAlgorithmVisualizer = (entry) => {
+    if (!entry || typeof entry.mount !== 'function') return;
+    const store = window.__ALGORITHM_VISUALIZERS__;
+    const normalized = {
+      id: String(entry.id || ''),
+      mount: entry.mount
+    };
+    const existingIndex = normalized.id ? store.findIndex((item) => item && item.id === normalized.id) : -1;
+    if (existingIndex >= 0) {
+      store[existingIndex] = normalized;
+    } else {
+      store.push(normalized);
+    }
+  };
+
+  return window.__ALGORITHM_VISUALIZERS__;
+}
+
+function loadAlgorithmScript(scriptPath) {
+  return new Promise((resolve, reject) => {
+    if (!scriptPath) {
+      resolve();
+      return;
+    }
+
+    const normalizedPath = String(scriptPath).replace(/^\\/+/, '');
+    const existing = document.querySelector('script[data-algorithm-path=\"' + normalizedPath + '\"]');
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('算法脚本加载失败：' + normalizedPath)), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.async = false;
+    script.dataset.algorithmPath = normalizedPath;
+    const scriptUrl = new URL(buildSiteUrl('assets/algorithms/' + normalizedPath), window.location.href);
+    scriptUrl.searchParams.set('_', String(Date.now()));
+    script.src = scriptUrl.toString();
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    script.onerror = () => reject(new Error('算法脚本加载失败：' + normalizedPath));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadAlgorithmScripts() {
+  ensureAlgorithmRegistry();
+  const algorithms = Array.isArray(window.__SITE_DATA__.algorithms) ? window.__SITE_DATA__.algorithms : [];
+  for (const entry of algorithms) {
+    await loadAlgorithmScript(entry && entry.scriptPath);
+  }
+  return window.__ALGORITHM_VISUALIZERS__;
 }
 
 function syncLayoutMetrics() {
@@ -1713,6 +1773,7 @@ function showRuntimeLoadError(error) {
 document.addEventListener('DOMContentLoaded', async () => {
   syncLayoutMetrics();
   syncHeaderState();
+  await loadAlgorithmScripts();
   initAlgorithms();
   window.addEventListener('resize', () => {
     syncHeaderState();
@@ -2364,27 +2425,19 @@ a { color: inherit; text-decoration: none; }
   `.trim();
 }
 
-function copyAlgorithmAssets() {
-  const sourceDir = path.join(ROOT, 'test', 'ref', '06_website', 'js');
+function copyAlgorithmAssets(algorithmSnapshots) {
   const targetDir = path.join(OUT_DIR, 'assets', 'algorithms');
-  const files = ['path_planner.js', 'clustering.js', 'dijkstra.js', 'dijkstra.worker.js', 'path_following.js'];
-
-  for (const fileName of files) {
-    const sourcePath = path.join(sourceDir, fileName);
-    const targetPath = path.join(targetDir, fileName);
-    let content = fs.readFileSync(sourcePath, 'utf8');
-    if (fileName === 'dijkstra.js') {
-      content = content.replace("new Worker('js/dijkstra.worker.js')", `new Worker('${SITE_ROOT}/assets/algorithms/dijkstra.worker.js')`);
-    }
-    if (fileName === 'path_planner.js') content = content.replace(/\n\/\/ 初始化路径规划器[\s\S]*$/, '\n');
-    if (fileName === 'clustering.js') content = content.replace(/\n\/\/ 初始化聚类可视化器[\s\S]*$/, '\n');
-    writeFile(targetPath, content);
-  }
+  restoreDirectoryFiles(targetDir, algorithmSnapshots);
+  return Array.from(algorithmSnapshots.keys())
+    .map((filePath) => toPosixPath(filePath))
+    .filter((filePath) => filePath.toLowerCase().endsWith('.js') && !filePath.toLowerCase().endsWith('.worker.js'))
+    .sort();
 }
 
 function main() {
   const editableSources = snapshotEditableContentSources();
   const imageSnapshots = snapshotDirectoryFiles(path.join(OUT_DIR, 'assets', 'images'));
+  const algorithmSnapshots = snapshotDirectoryFiles(path.join(OUT_DIR, 'assets', 'algorithms'));
   resetOutput();
   restoreDirectoryFiles(path.join(OUT_DIR, 'assets', 'images'), imageSnapshots);
   const assetCollector = new Set();
@@ -2397,13 +2450,13 @@ function main() {
 
   articles.sort(compareArticlesByDisplayOrder);
 
-  copyAlgorithmAssets();
+  const algorithmScripts = copyAlgorithmAssets(algorithmSnapshots);
 
   writeFile(path.join(OUT_DIR, 'assets', 'css', 'style.css'), buildStyles());
   writeFile(path.join(OUT_DIR, 'assets', 'js', 'chrome.js'), buildChromeScript());
   writeFile(path.join(OUT_DIR, 'assets', 'js', 'site.js'), buildClientScript());
 
-  const siteData = buildSiteData(articles);
+  const siteData = buildSiteData(articles, algorithmScripts);
   writeFile(path.join(OUT_DIR, 'assets', 'data', 'site-data.js'), `window.__SITE_DATA__ = ${JSON.stringify(siteData, null, 2)};\n`);
   writeFile(path.join(OUT_DIR, 'index.html'), buildHomePage());
   for (const [, source] of editableSources.articles.entries()) {

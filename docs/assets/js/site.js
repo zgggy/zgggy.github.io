@@ -1133,12 +1133,7 @@ function initAlgorithms() {
   const secondCanvas = document.getElementById('algorithm-canvas-b');
   if (!firstCanvas || !secondCanvas) return;
 
-  const factories = [
-    { available: typeof PathPlanner !== 'undefined', mount: (canvas) => new PathPlanner(canvas) },
-    { available: typeof ClusteringVisualizer !== 'undefined', mount: (canvas) => new ClusteringVisualizer(canvas) },
-    { available: typeof DijkstraVisualizer !== 'undefined', mount: (canvas) => new DijkstraVisualizer(canvas) },
-    { available: typeof PathFollowingVisualizer !== 'undefined', mount: (canvas) => new PathFollowingVisualizer(canvas) }
-  ].filter((item) => item.available);
+  const factories = (window.__ALGORITHM_VISUALIZERS__ || []).filter((item) => item && typeof item.mount === 'function');
 
   if (factories.length < 2) return;
 
@@ -1146,6 +1141,72 @@ function initAlgorithms() {
   [firstCanvas, secondCanvas].forEach((canvas, index) => {
     shuffled[index].mount(canvas);
   });
+}
+
+function ensureAlgorithmRegistry() {
+  if (!Array.isArray(window.__ALGORITHM_VISUALIZERS__)) {
+    window.__ALGORITHM_VISUALIZERS__ = [];
+  }
+
+  window.__registerAlgorithmVisualizer = (entry) => {
+    if (!entry || typeof entry.mount !== 'function') return;
+    const store = window.__ALGORITHM_VISUALIZERS__;
+    const normalized = {
+      id: String(entry.id || ''),
+      mount: entry.mount
+    };
+    const existingIndex = normalized.id ? store.findIndex((item) => item && item.id === normalized.id) : -1;
+    if (existingIndex >= 0) {
+      store[existingIndex] = normalized;
+    } else {
+      store.push(normalized);
+    }
+  };
+
+  return window.__ALGORITHM_VISUALIZERS__;
+}
+
+function loadAlgorithmScript(scriptPath) {
+  return new Promise((resolve, reject) => {
+    if (!scriptPath) {
+      resolve();
+      return;
+    }
+
+    const normalizedPath = String(scriptPath).replace(/^\/+/, '');
+    const existing = document.querySelector('script[data-algorithm-path="' + normalizedPath + '"]');
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('算法脚本加载失败：' + normalizedPath)), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.async = false;
+    script.dataset.algorithmPath = normalizedPath;
+    const scriptUrl = new URL(buildSiteUrl('assets/algorithms/' + normalizedPath), window.location.href);
+    scriptUrl.searchParams.set('_', String(Date.now()));
+    script.src = scriptUrl.toString();
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    script.onerror = () => reject(new Error('算法脚本加载失败：' + normalizedPath));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadAlgorithmScripts() {
+  ensureAlgorithmRegistry();
+  const algorithms = Array.isArray(window.__SITE_DATA__.algorithms) ? window.__SITE_DATA__.algorithms : [];
+  for (const entry of algorithms) {
+    await loadAlgorithmScript(entry && entry.scriptPath);
+  }
+  return window.__ALGORITHM_VISUALIZERS__;
 }
 
 function syncLayoutMetrics() {
@@ -1177,6 +1238,7 @@ function showRuntimeLoadError(error) {
 document.addEventListener('DOMContentLoaded', async () => {
   syncLayoutMetrics();
   syncHeaderState();
+  await loadAlgorithmScripts();
   initAlgorithms();
   window.addEventListener('resize', () => {
     syncHeaderState();

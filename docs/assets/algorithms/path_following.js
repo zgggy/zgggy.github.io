@@ -3,8 +3,10 @@ class PathFollowingVisualizer {
     constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
-        this.width = canvas.width;
-        this.height = canvas.height;
+        this.baseWidth = canvas.width;
+        this.baseHeight = canvas.height;
+        this.width = this.baseWidth;
+        this.height = this.baseHeight;
 
         // 配置参数
         this.path = [];
@@ -36,11 +38,65 @@ class PathFollowingVisualizer {
         this.floatOffset = []; // 每个控制点的浮动偏移
         this.floatSpeed = []; // 每个控制点的浮动速度
         this.floatTime = 0;
+        this.handleResize = () => this.resizeCanvas();
 
         // 初始化
+        this.resizeCanvas();
         this.initPath();
         this.setupEventListeners();
         this.startAnimation();
+        window.addEventListener('resize', this.handleResize, { passive: true });
+    }
+
+    resizeCanvas() {
+        const rect = this.canvas.getBoundingClientRect();
+        const nextWidth = Math.max(1, Math.round(rect.width || this.baseWidth));
+        const nextHeight = Math.max(1, Math.round(rect.height || this.baseHeight));
+        const prevWidth = this.width || nextWidth;
+        const prevHeight = this.height || nextHeight;
+        const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+
+        this.canvas.width = Math.round(nextWidth * dpr);
+        this.canvas.height = Math.round(nextHeight * dpr);
+        this.width = nextWidth;
+        this.height = nextHeight;
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.ctx.imageSmoothingEnabled = true;
+
+        if (prevWidth !== nextWidth || prevHeight !== nextHeight) {
+            this.scaleSceneForResize(prevWidth, prevHeight);
+        }
+    }
+
+    scaleSceneForResize(prevWidth, prevHeight) {
+        if (!prevWidth || !prevHeight || !this.controlPoints) return;
+
+        const scaleX = this.width / prevWidth;
+        const scaleY = this.height / prevHeight;
+
+        for (const point of this.controlPoints) {
+            point.x *= scaleX;
+            point.y *= scaleY;
+        }
+
+        for (const offset of this.floatOffset) {
+            offset.x *= scaleX;
+            offset.y *= scaleY;
+        }
+
+        this.vehicle.x *= scaleX;
+        this.vehicle.y *= scaleY;
+        this.updatePath();
+    }
+
+    getCanvasPoint(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.width / rect.width;
+        const scaleY = this.height / rect.height;
+        return {
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
+        };
     }
 
     // 初始化路径
@@ -244,13 +300,7 @@ class PathFollowingVisualizer {
 
     // 处理鼠标按下事件
     handleMouseDown(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        this.mousePos = {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
-        };
+        this.mousePos = this.getCanvasPoint(e);
 
         for (let i = 0; i < this.controlPoints.length; i++) {
             const pos = this.getControlPointPosition(i);
@@ -269,13 +319,7 @@ class PathFollowingVisualizer {
 
     // 处理鼠标移动事件
     handleMouseMove(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        this.mousePos = {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
-        };
+        this.mousePos = this.getCanvasPoint(e);
 
         if (this.isDragging && this.dragPointIndex >= 0) {
             const controlPoint = this.controlPoints[this.dragPointIndex];
@@ -297,13 +341,7 @@ class PathFollowingVisualizer {
 
     // 处理双击事件 - 新增控制点
     handleDoubleClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        const clickPos = {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
-        };
+        const clickPos = this.getCanvasPoint(e);
 
         // 直接使用双击位置作为新控制点位置
         this.controlPoints.push({
@@ -342,70 +380,64 @@ class PathFollowingVisualizer {
         });
     }
 
-    // 绘制
-    draw() {
-        this.ctx.fillStyle = '#ffffff';
-        this.ctx.fillRect(0, 0, this.width, this.height);
+    tracePath() {
+        if (!this.path.length) return;
 
-        // 绘制路径
-        this.ctx.strokeStyle = this.pathColor;
-        this.ctx.lineWidth = 3;
-        this.ctx.lineCap = 'round';
-        this.ctx.lineJoin = 'round';
         this.ctx.beginPath();
         this.ctx.moveTo(this.path[0].x, this.path[0].y);
         for (let i = 1; i < this.path.length; i++) {
             this.ctx.lineTo(this.path[i].x, this.path[i].y);
         }
-        this.ctx.stroke();
+        this.ctx.closePath();
+    }
+
+    isPointInsideLoop(point) {
+        let inside = false;
+        for (let i = 0, j = this.path.length - 1; i < this.path.length; j = i++) {
+            const xi = this.path[i].x;
+            const yi = this.path[i].y;
+            const xj = this.path[j].x;
+            const yj = this.path[j].y;
+
+            const intersect = ((yi > point.y) !== (yj > point.y)) &&
+                (point.x < ((xj - xi) * (point.y - yi)) / ((yj - yi) || 0.00001) + xi);
+            if (intersect) inside = !inside;
+        }
+        return inside;
+    }
+
+    drawFilledCircle(x, y, radius, color) {
+        this.ctx.fillStyle = color;
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+        this.ctx.fill();
+    }
+
+    // 绘制
+    draw() {
+        this.ctx.fillStyle = '#e4e4e4';
+        this.ctx.fillRect(0, 0, this.width, this.height);
+
+        if (!this.path.length) return;
+
+        // 外侧浅灰，内侧留白
+        this.ctx.fillStyle = '#fafafa';
+        this.tracePath();
+        this.ctx.fill();
 
         // 绘制控制点
         for (let i = 0; i < this.controlPoints.length; i++) {
             const pos = this.getControlPointPosition(i);
-            
-            // 白色填充，蓝色边框
-            this.ctx.fillStyle = '#ffffff';
-            this.ctx.strokeStyle = this.pathColor;
-            this.ctx.lineWidth = 3;
-            this.ctx.beginPath();
-            this.ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.stroke();
+            this.drawFilledCircle(pos.x, pos.y, 5.5, '#c2c2c2');
         }
 
-        // 绘制预瞄点
+        // 被跟踪的小球
         const closestIndex = this.findClosestPathIndex();
         const { point: lookaheadPoint } = this.findLookaheadPoint(closestIndex);
-        this.ctx.fillStyle = this.lookaheadColor;
-        this.ctx.beginPath();
-        this.ctx.arc(lookaheadPoint.x, lookaheadPoint.y, 5, 0, Math.PI * 2);
-        this.ctx.fill();
-        
-        // 绘制预瞄线
-        this.ctx.strokeStyle = this.lookaheadColor;
-        this.ctx.lineWidth = 1;
-        this.ctx.setLineDash([5, 5]);
-        this.ctx.beginPath();
-        this.ctx.moveTo(this.vehicle.x, this.vehicle.y);
-        this.ctx.lineTo(lookaheadPoint.x, lookaheadPoint.y);
-        this.ctx.stroke();
-        this.ctx.setLineDash([]);
+        this.drawFilledCircle(lookaheadPoint.x, lookaheadPoint.y, 3.5, '#111111');
 
-        // 绘制车辆
-        this.ctx.save();
-        this.ctx.translate(this.vehicle.x, this.vehicle.y);
-        this.ctx.rotate(this.vehicle.heading);
-        
-        this.ctx.fillStyle = this.vehicleColor;
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, this.vehicle.length / 2, 0, Math.PI * 2);
-        this.ctx.fill();
-        
-        this.ctx.strokeStyle = '#333333';
-        this.ctx.lineWidth = 2;
-        this.ctx.stroke();
-        
-        this.ctx.restore();
+        // 跟踪的小球
+        this.drawFilledCircle(this.vehicle.x, this.vehicle.y, 11, '#5f5f5f');
     }
 
     // 开始动画
@@ -419,3 +451,8 @@ class PathFollowingVisualizer {
         animate();
     }
 }
+
+window.__registerAlgorithmVisualizer?.({
+    id: 'path-following',
+    mount: (canvas) => new PathFollowingVisualizer(canvas)
+});

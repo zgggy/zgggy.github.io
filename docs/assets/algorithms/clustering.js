@@ -3,8 +3,10 @@ class ClusteringVisualizer {
     constructor(canvas) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d');
-        this.width = canvas.width;
-        this.height = canvas.height;
+        this.baseWidth = canvas.width;
+        this.baseHeight = canvas.height;
+        this.width = this.baseWidth;
+        this.height = this.baseHeight;
         
         // 配置参数
         this.points = []; // 点集合
@@ -18,18 +20,58 @@ class ClusteringVisualizer {
         // 鼠标交互
         this.mousePos = { x: -1000, y: -1000 }; // 初始位置在画布外
         this.mouseRange = 50; // 鼠标影响范围
-        
-        // 颜色配置
-        this.colors = [
-            '#4CAF50', '#2196F3', '#FF9800', '#9C27B0',
-            '#f44336', '#795548', '#607D8B', '#E91E63',
-            '#00BCD4', '#FFC107', '#8BC34A', '#3F51B5'
-        ];
+        this.handleResize = () => this.resizeCanvas();
         
         // 初始化
+        this.resizeCanvas();
         this.initPoints();
         this.setupEventListeners();
         this.startAnimation();
+        window.addEventListener('resize', this.handleResize, { passive: true });
+    }
+
+    resizeCanvas() {
+        const rect = this.canvas.getBoundingClientRect();
+        const nextWidth = Math.max(1, Math.round(rect.width || this.baseWidth));
+        const nextHeight = Math.max(1, Math.round(rect.height || this.baseHeight));
+        const prevWidth = this.width || nextWidth;
+        const prevHeight = this.height || nextHeight;
+        const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+
+        this.canvas.width = Math.round(nextWidth * dpr);
+        this.canvas.height = Math.round(nextHeight * dpr);
+        this.width = nextWidth;
+        this.height = nextHeight;
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.ctx.imageSmoothingEnabled = true;
+
+        if (prevWidth !== nextWidth || prevHeight !== nextHeight) {
+            this.scaleSceneForResize(prevWidth, prevHeight);
+        }
+    }
+
+    scaleSceneForResize(prevWidth, prevHeight) {
+        if (!prevWidth || !prevHeight || !this.points.length) return;
+
+        const scaleX = this.width / prevWidth;
+        const scaleY = this.height / prevHeight;
+        for (const point of this.points) {
+            point.x *= scaleX;
+            point.y *= scaleY;
+        }
+        this.mousePos.x *= scaleX;
+        this.mousePos.y *= scaleY;
+        this.runDBSCAN();
+    }
+
+    getCanvasPoint(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.width / rect.width;
+        const scaleY = this.height / rect.height;
+        return {
+            x: (e.clientX - rect.left) * scaleX,
+            y: (e.clientY - rect.top) * scaleY
+        };
     }
     
     // 初始化随机点
@@ -55,26 +97,14 @@ class ClusteringVisualizer {
     
     // 处理鼠标移动
     handleMouseMove(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        // 计算鼠标在canvas中的实际坐标，考虑canvas的缩放
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        this.mousePos = {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
-        };
+        this.mousePos = this.getCanvasPoint(e);
         // 实时更新聚类，添加动画效果
         this.runDBSCAN();
     }
     
     // 处理点击事件 - 添加点
     handleClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        // 计算点击在canvas中的实际坐标，考虑canvas的缩放
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
+        const { x, y } = this.getCanvasPoint(e);
         
         // 添加新点
         this.points.push({ x, y, cluster: -1 });
@@ -83,12 +113,7 @@ class ClusteringVisualizer {
     
     // 处理双击事件 - 删除点
     handleDoubleClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
-        // 计算点击在canvas中的实际坐标，考虑canvas的缩放
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
+        const { x, y } = this.getCanvasPoint(e);
         
         // 查找并删除点击位置的点
         for (let i = this.points.length - 1; i >= 0; i--) {
@@ -115,13 +140,7 @@ class ClusteringVisualizer {
     handleRightClick(e) {
         // 阻止右键菜单的默认行为
         e.preventDefault();
-        
-        const rect = this.canvas.getBoundingClientRect();
-        // 计算点击在canvas中的实际坐标，考虑canvas的缩放
-        const scaleX = this.canvas.width / rect.width;
-        const scaleY = this.canvas.height / rect.height;
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
+        const { x, y } = this.getCanvasPoint(e);
         
         // 查找并删除点击位置的点
         for (let i = this.points.length - 1; i >= 0; i--) {
@@ -212,51 +231,34 @@ class ClusteringVisualizer {
     // 绘制
     draw() {
         // 清空画布
-        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillStyle = '#f7f7f7';
         this.ctx.fillRect(0, 0, this.width, this.height);
-        
-        // 绘制背景网格
-        this.drawGrid();
-        
+
         // 绘制噪声点
-        this.ctx.fillStyle = '#cccccc';
-        this.ctx.strokeStyle = '#999999';
         for (let point of this.noise) {
-            // 检查是否在鼠标范围内
             const distance = Math.sqrt(
                 Math.pow(point.x - this.mousePos.x, 2) + 
                 Math.pow(point.y - this.mousePos.y, 2)
             );
             if (distance < this.mouseRange) {
-                // 鼠标范围内的噪声点 - 放大但保持颜色
-                this.drawPoint(point, 8, true);
+                this.drawPoint(point, 8, 'noise');
             } else {
-                // 普通噪声点
-                this.drawPoint(point, 4, false);
+                this.drawPoint(point, 4, 'noise');
             }
         }
         
         // 绘制聚类点
         for (let i = 0; i < this.clusters.length; i++) {
-            const color = this.colors[i % this.colors.length];
-            
             for (let point of this.points) {
                 if (point.cluster === i) {
-                    // 检查是否在鼠标范围内
                     const distance = Math.sqrt(
                         Math.pow(point.x - this.mousePos.x, 2) + 
                         Math.pow(point.y - this.mousePos.y, 2)
                     );
                     if (distance < this.mouseRange) {
-                        // 鼠标范围内的聚类点 - 放大但保持颜色
-                        this.ctx.fillStyle = color;
-                        this.ctx.strokeStyle = this.darkenColor(color, 0.3);
-                        this.drawPoint(point, 10, true);
+                        this.drawPoint(point, 10, i);
                     } else {
-                        // 普通聚类点
-                        this.ctx.fillStyle = color;
-                        this.ctx.strokeStyle = this.darkenColor(color, 0.3);
-                        this.drawPoint(point, 6, false);
+                        this.drawPoint(point, 6, i);
                     }
                 }
             }
@@ -264,61 +266,124 @@ class ClusteringVisualizer {
     }
     
     // 绘制点
-    drawPoint(point, size, isHovered) {
-        // 添加动画效果 - 点的大小和透明度变化
-        // 计算目标大小和当前大小的插值
+    drawPoint(point, size, clusterType) {
         if (!point.currentSize) {
             point.currentSize = size;
         }
-        // 平滑过渡到目标大小
         point.currentSize += (size - point.currentSize) * 0.2;
-        
-        this.ctx.beginPath();
-        this.ctx.arc(point.x, point.y, point.currentSize, 0, Math.PI * 2);
+
+        const visual = this.getClusterVisual(clusterType);
+        this.traceClusterShape(point.x, point.y, point.currentSize, clusterType);
+
+        if (visual.hollow) {
+            this.ctx.strokeStyle = visual.stroke;
+            this.ctx.lineWidth = Math.max(1.5, point.currentSize * 0.35);
+            this.ctx.stroke();
+            return;
+        }
+
+        this.ctx.fillStyle = visual.fill;
         this.ctx.fill();
-        if (!isHovered) {
-            this.ctx.lineWidth = 1;
-            this.ctx.stroke();
-        } else {
-            this.ctx.lineWidth = 2;
-            this.ctx.stroke();
-        }
     }
-    
-    // 绘制网格
-    drawGrid() {
-        this.ctx.strokeStyle = '#e0e0e0';
-        this.ctx.lineWidth = 0.5;
-        
-        // 垂直线
-        for (let x = 0; x <= this.width; x += 20) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(x, 0);
-            this.ctx.lineTo(x, this.height);
-            this.ctx.stroke();
+
+    getClusterVisual(clusterType) {
+        if (clusterType === 'noise') {
+            return {
+                hollow: false,
+                fill: '#cfcfcf',
+                stroke: '#9d9d9d'
+            };
         }
-        
-        // 水平线
-        for (let y = 0; y <= this.height; y += 20) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(0, y);
-            this.ctx.lineTo(this.width, y);
-            this.ctx.stroke();
-        }
+
+        const hollow = clusterType % 2 === 1;
+        return {
+            hollow,
+            fill: '#6a6a6a',
+            stroke: '#6a6a6a'
+        };
     }
-    
-    // 颜色变暗
-    darkenColor(color, factor) {
-        const hex = color.replace('#', '');
-        const r = parseInt(hex.substring(0, 2), 16);
-        const g = parseInt(hex.substring(2, 4), 16);
-        const b = parseInt(hex.substring(4, 6), 16);
-        
-        const newR = Math.max(0, Math.floor(r * (1 - factor)));
-        const newG = Math.max(0, Math.floor(g * (1 - factor)));
-        const newB = Math.max(0, Math.floor(b * (1 - factor)));
-        
-        return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+
+    traceClusterShape(x, y, radius, clusterType) {
+        if (clusterType === 'noise') {
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+            return;
+        }
+
+        const normalizedType = clusterType % 5;
+
+        if (normalizedType === 0) {
+            this.ctx.beginPath();
+            this.ctx.arc(x, y, radius, 0, Math.PI * 2);
+            return;
+        }
+
+        if (normalizedType === 2) {
+            this.traceRoundedRect(x, y, radius * 1.9, radius * 1.9, radius * 0.45);
+            return;
+        }
+
+        const sides = normalizedType === 1 ? 3 : normalizedType === 3 ? 5 : 6;
+        this.traceRoundedPolygon(x, y, radius * 1.2, sides, radius * 0.32, -Math.PI / 2);
+    }
+
+    traceRoundedRect(centerX, centerY, width, height, radius) {
+        const x = centerX - width / 2;
+        const y = centerY - height / 2;
+        const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+
+        this.ctx.beginPath();
+        this.ctx.moveTo(x + safeRadius, y);
+        this.ctx.lineTo(x + width - safeRadius, y);
+        this.ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+        this.ctx.lineTo(x + width, y + height - safeRadius);
+        this.ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+        this.ctx.lineTo(x + safeRadius, y + height);
+        this.ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+        this.ctx.lineTo(x, y + safeRadius);
+        this.ctx.quadraticCurveTo(x, y, x + safeRadius, y);
+        this.ctx.closePath();
+    }
+
+    traceRoundedPolygon(centerX, centerY, radius, sides, cornerRadius, rotation = 0) {
+        const vertices = [];
+        for (let i = 0; i < sides; i++) {
+            const angle = rotation + (Math.PI * 2 * i) / sides;
+            vertices.push({
+                x: centerX + Math.cos(angle) * radius,
+                y: centerY + Math.sin(angle) * radius
+            });
+        }
+
+        const maxCornerRadius = radius * 0.45;
+        const safeCornerRadius = Math.max(0, Math.min(cornerRadius, maxCornerRadius));
+
+        this.ctx.beginPath();
+        for (let i = 0; i < sides; i++) {
+            const prev = vertices[(i - 1 + sides) % sides];
+            const current = vertices[i];
+            const next = vertices[(i + 1) % sides];
+
+            const prevDx = prev.x - current.x;
+            const prevDy = prev.y - current.y;
+            const nextDx = next.x - current.x;
+            const nextDy = next.y - current.y;
+            const prevLength = Math.hypot(prevDx, prevDy) || 1;
+            const nextLength = Math.hypot(nextDx, nextDy) || 1;
+
+            const startX = current.x + (prevDx / prevLength) * safeCornerRadius;
+            const startY = current.y + (prevDy / prevLength) * safeCornerRadius;
+            const endX = current.x + (nextDx / nextLength) * safeCornerRadius;
+            const endY = current.y + (nextDy / nextLength) * safeCornerRadius;
+
+            if (i === 0) {
+                this.ctx.moveTo(startX, startY);
+            } else {
+                this.ctx.lineTo(startX, startY);
+            }
+            this.ctx.quadraticCurveTo(current.x, current.y, endX, endY);
+        }
+        this.ctx.closePath();
     }
     
     // 开始动画
@@ -332,3 +397,7 @@ class ClusteringVisualizer {
     }
 }
 
+window.__registerAlgorithmVisualizer?.({
+    id: 'clustering',
+    mount: (canvas) => new ClusteringVisualizer(canvas)
+});
