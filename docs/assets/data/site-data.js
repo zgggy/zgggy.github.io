@@ -13,6 +13,7 @@ window.__SITE_DATA__ = {
     "/articles/home/footer.md": "footer",
     "/articles/footer.md": "footer",
     "/articles/poem/oldtree.md": "poem/oldtree",
+    "/articles/hidden/zero-second.md": "hidden/zero-second",
     "/articles/poem/dream.md": "poem/dream",
     "/articles/home/midline.md": "midline",
     "/articles/midline.md": "midline",
@@ -64,6 +65,12 @@ window.__SITE_DATA__ = {
       "section": "poem",
       "mdPath": "poem/oldtree.md",
       "jsPath": ""
+    },
+    {
+      "slug": "hidden/zero-second",
+      "section": "hidden",
+      "mdPath": "hidden/zero-second.md",
+      "jsPath": "hidden/zero-second.js"
     },
     {
       "slug": "poem/dream",
