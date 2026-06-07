@@ -6,9 +6,8 @@ function renderSiteHeader() {
     '<div class="header-inner">',
     '  <a class="brandmark" href="./">',
     '    <span class="brandmark-main">派大栓</span>',
-    '    <span class="brandmark-sub">NOTES / POEMS / ESSAYS</span>',
+    '    <span class="brandmark-sub">WIRED NOTES / POEMS / ARCHIVE</span>',
     '  </a>',
-    '  <a class="header-link" href="https://github.com/zgggy/zgggy.github.io" target="_blank" rel="noreferrer" aria-label="GitHub"><img class="header-icon" src="https://cdn.simpleicons.org/github/111111" alt="GitHub"></a>',
     '</div>'
   ].join('');
 }

@@ -9,6 +9,7 @@ const SITE_ROOT = '.';
 const BRAND_SUBTITLE = 'WIRED NOTES / POEMS / ARCHIVE';
 const HOME_SLOT_SLUGS = ['hero', 'lovestory1', 'lovestory2', 'lovestory3', 'midline', 'footer'];
 const LOVE_TIMER_START = '2013-05-08T00:00:00+08:00';
+const HIDDEN_ARTICLE_DIR = 'hidden/';
 
 function toPosixPath(input) {
   return String(input || '').replace(/\\/g, '/');
@@ -18,7 +19,7 @@ function getArticlePathWithoutExtension(relativePath) {
   const normalized = toPosixPath(relativePath).replace(/^\/+/, '');
   if (/\/README\.md$/i.test(normalized)) return normalized.replace(/\/README\.md$/i, '');
   if (/^README\.md$/i.test(normalized)) return 'README';
-  return normalized.replace(/\.md$/i, '');
+  return normalized.replace(/\.(md|js)$/i, '');
 }
 
 function resolveArticleSlug(relativePath) {
@@ -86,8 +87,8 @@ function restoreDirectoryFiles(dirPath, snapshots) {
   }
 }
 
-function snapshotEditableMarkdownSources() {
-  const sources = { articles: new Map() };
+function snapshotEditableContentSources() {
+  const sources = { articles: new Map(), hiddenScripts: new Map() };
   if (!fs.existsSync(EDITABLE_ARTICLES_DIR)) return sources;
 
   for (const filePath of getMarkdownFiles(EDITABLE_ARTICLES_DIR)) {
@@ -97,6 +98,16 @@ function snapshotEditableMarkdownSources() {
 
     if (sources.articles.has(slug)) throw new Error(`Duplicate article slug "${slug}" from ${relativePath}`);
     sources.articles.set(slug, { markdown, mdPath: relativePath, filePath });
+  }
+
+  for (const filePath of getJavaScriptFiles(EDITABLE_ARTICLES_DIR)) {
+    const relativePath = toPosixPath(path.relative(EDITABLE_ARTICLES_DIR, filePath));
+    if (!relativePath.startsWith(HIDDEN_ARTICLE_DIR)) continue;
+    sources.hiddenScripts.set(relativePath, {
+      jsPath: relativePath,
+      filePath,
+      content: fs.readFileSync(filePath, 'utf8')
+    });
   }
 
   return sources;
@@ -130,11 +141,30 @@ function getMarkdownFiles(dirPath) {
   return results;
 }
 
+function getJavaScriptFiles(dirPath) {
+  const results = [];
+  for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+    const fullPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...getJavaScriptFiles(fullPath));
+      continue;
+    }
+    if (entry.name.toLowerCase().endsWith('.js')) results.push(fullPath);
+  }
+  return results;
+}
+
 function inferSectionFromTags(tags) {
   if ((tags || []).some((tag) => ['诗歌', '现代诗', '旧体诗'].includes(tag))) return 'poem';
   if ((tags || []).includes('散文')) return 'essay';
   if ((tags || []).some((tag) => ['技术', '架构', '状态机', 'C++'].includes(tag))) return 'tech';
   return 'article';
+}
+
+function inferSectionFromPath(relativePath) {
+  const normalized = toPosixPath(relativePath).replace(/^\/+/, '');
+  if (normalized.startsWith(HIDDEN_ARTICLE_DIR)) return 'hidden';
+  return '';
 }
 
 function resolveAsset(rawHref, article, assetCollector) {
@@ -200,9 +230,74 @@ function parseDocumentParts(markdown, fallbackTitle) {
 
   while (cursor < lines.length && !lines[cursor].trim()) cursor += 1;
 
-  const bodyMarkdown = lines.slice(cursor).join('\n').trim();
+  const trailing = extractTrailingAfterwords(lines.slice(cursor));
+  const bodyMarkdown = trailing.bodyLines.join('\n').trim();
   const summary = normalizeWhitespace(summaryLines.join(' '));
-  return { title, summary, bodyMarkdown, publishedAt, tags };
+  return { title, summary, bodyMarkdown, publishedAt, tags, afterwords: trailing.afterwords };
+}
+
+function extractInlineAfterwordDate(line) {
+  const input = String(line || '').trim();
+  if (!input) return { text: '', publishedAt: '' };
+  const matched = input.match(/^(.*?)(?:\s+[&@](.+))$/);
+  if (!matched) return { text: input, publishedAt: '' };
+  const normalized = normalizePublishedAt(matched[2].trim());
+  if (parsePublishedAtSortValue(normalized) === null) return { text: input, publishedAt: '' };
+  return { text: matched[1].trim(), publishedAt: normalized };
+}
+
+function extractTrailingAfterwords(lines) {
+  let scan = lines.length - 1;
+  while (scan >= 0 && !lines[scan].trim()) scan -= 1;
+  if (scan < 0) return { bodyLines: lines, afterwords: [] };
+
+  const afterwords = [];
+
+  while (scan >= 0) {
+    let cursor = scan;
+    let publishedAt = '';
+
+    if (/^[&@]\s*/.test(lines[cursor].trim())) {
+      const normalized = normalizePublishedAt(lines[cursor].trim().replace(/^[&@]\s*/, ''));
+      if (parsePublishedAtSortValue(normalized) === null) break;
+      publishedAt = normalized;
+      cursor -= 1;
+      while (cursor >= 0 && !lines[cursor].trim()) cursor -= 1;
+    }
+
+    if (cursor < 0 || !/^>\s?/.test(lines[cursor].trim())) break;
+
+    const quoteLines = [];
+    while (cursor >= 0 && /^>\s?/.test(lines[cursor].trim())) {
+      quoteLines.unshift(lines[cursor].trim().replace(/^>\s?/, ''));
+      cursor -= 1;
+    }
+
+    if (!publishedAt && quoteLines.length) {
+      const inline = extractInlineAfterwordDate(quoteLines[quoteLines.length - 1]);
+      quoteLines[quoteLines.length - 1] = inline.text;
+      publishedAt = inline.publishedAt;
+    }
+
+    const bodyMarkdown = quoteLines.join('\n').trim();
+    if (!bodyMarkdown) break;
+
+    afterwords.push({
+      bodyMarkdown,
+      publishedAt,
+      sourceIndex: afterwords.length
+    });
+
+    scan = cursor;
+    while (scan >= 0 && !lines[scan].trim()) scan -= 1;
+  }
+
+  if (!afterwords.length) return { bodyLines: lines, afterwords: [] };
+
+  return {
+    bodyLines: lines.slice(0, scan + 1),
+    afterwords: afterwords.reverse()
+  };
 }
 
 function padDatePart(value) {
@@ -268,16 +363,19 @@ function collectArticleAssets(filePath, slug, markdown, assetCollector) {
   }
 }
 
-function buildArticleRecord(filePath, slug, editableSource, assetCollector) {
+function buildArticleRecord(filePath, slug, editableSource, sidecarScripts, assetCollector) {
   const markdown = editableSource.markdown;
   const parsed = parseDocumentParts(markdown, slug);
-  const section = inferSectionFromTags(parsed.tags);
+  const section = inferSectionFromPath(editableSource.mdPath) || inferSectionFromTags(parsed.tags);
+  const expectedScriptPath = editableSource.mdPath.replace(/\.md$/i, '.js');
+  const jsPath = section === 'hidden' && sidecarScripts.has(expectedScriptPath) ? expectedScriptPath : '';
 
   collectArticleAssets(filePath, slug, markdown, assetCollector);
 
   return {
     slug,
     mdPath: editableSource.mdPath,
+    jsPath,
     section,
     title: parsed.title
   };
@@ -347,7 +445,6 @@ function renderSiteHeader() {
     '    <span class="brandmark-main">派大栓</span>',
     '    <span class="brandmark-sub">${BRAND_SUBTITLE}</span>',
     '  </a>',
-    '  <a class="header-link" href="https://github.com/zgggy/zgggy.github.io" target="_blank" rel="noreferrer" aria-label="GitHub"><img class="header-icon" src="https://cdn.simpleicons.org/github/111111" alt="GitHub"></a>',
     '</div>'
   ].join('');
 }
@@ -429,7 +526,8 @@ function buildSiteData(articles) {
     articles: articles.map((article) => ({
       slug: article.slug,
       section: article.section,
-      mdPath: article.mdPath
+      mdPath: article.mdPath,
+      jsPath: article.jsPath || ''
     }))
   };
 }
@@ -438,6 +536,7 @@ function buildClientScript() {
   return `
 const HOME_SLOT_SLUGS = ${JSON.stringify(HOME_SLOT_SLUGS)};
 const LOVE_TIMER_START = ${JSON.stringify(LOVE_TIMER_START)};
+const HIDDEN_ARTICLE_DIR = ${JSON.stringify(HIDDEN_ARTICLE_DIR)};
 
 function escapeHtml(input) {
   return input
@@ -462,6 +561,20 @@ function formatArticleMeta(article) {
 
 function formatModalMeta(article) {
   return [getArticleCategory(article), getArticleTagText(article)].filter(Boolean).join(' ');
+}
+
+function isHiddenArticleEntry(entry) {
+  const section = String((entry && entry.section) || '');
+  const slug = String((entry && entry.slug) || '');
+  const mdPath = normalizeArticleMdPath(entry && entry.mdPath);
+  return section === 'hidden' || slug.startsWith(HIDDEN_ARTICLE_DIR) || mdPath.startsWith(HIDDEN_ARTICLE_DIR);
+}
+
+function getPoemBodyVariantClass(article) {
+  const tags = article && Array.isArray(article.tags) ? article.tags : [];
+  if (tags.includes('旧体诗')) return ' is-classic-poem';
+  if (tags.includes('现代诗')) return ' is-modern-poem';
+  return '';
 }
 
 function normalizeArticleMdPath(input) {
@@ -510,7 +623,7 @@ function getArticlePathWithoutExtension(mdPath) {
   const normalized = normalizeArticleMdPath(mdPath);
   if (/\\/README\\.md$/i.test(normalized)) return normalized.replace(/\\/README\\.md$/i, '');
   if (/^README\\.md$/i.test(normalized)) return 'README';
-  return normalized.replace(/\\.md$/i, '');
+  return normalized.replace(/\\.(md|js)$/i, '');
 }
 
 function resolveArticleSlugFromMdPath(mdPath) {
@@ -520,6 +633,10 @@ function resolveArticleSlugFromMdPath(mdPath) {
   const parentName = segments.length > 1 ? segments[segments.length - 2] : '';
   if (parentName === 'home' && HOME_SLOT_SLUGS.includes(baseName)) return baseName;
   return pathWithoutExtension;
+}
+
+function resolveArticleSlugFromScriptPath(jsPath) {
+  return resolveArticleSlugFromMdPath(jsPath);
 }
 
 function parsePublishedAtSortValue(value) {
@@ -831,6 +948,29 @@ function markdownToHtml(markdown, article) {
   return html.join('\\n');
 }
 
+function formatAfterwordText(markdown) {
+  return escapeHtml(String(markdown || '').trim()).replace(/\\n+/g, '<br>');
+}
+
+function buildAfterwordsHtml(afterwords) {
+  if (!afterwords || !afterwords.length) return '';
+
+  const entries = afterwords
+    .slice()
+    .sort(compareAfterwordsByDisplayOrder)
+    .map((afterword) => {
+      return [
+        '<article class="article-afterword">',
+        afterword.publishedAt ? '<div class="article-afterword-time">' + escapeHtml(afterword.publishedAt) + '</div>' : '',
+        '<div class="article-afterword-content">' + formatAfterwordText(afterword.bodyMarkdown) + '</div>',
+        '</article>'
+      ].join('');
+    })
+    .join('');
+
+  return '<section class="article-afterwords">' + entries + '</section>';
+}
+
 function parseDocumentParts(markdown, fallbackTitle) {
   const lines = markdown.replace(/\\r\\n/g, '\\n').split('\\n');
   let cursor = 0;
@@ -871,9 +1011,74 @@ function parseDocumentParts(markdown, fallbackTitle) {
   }
 
   while (cursor < lines.length && !lines[cursor].trim()) cursor += 1;
-  const bodyMarkdown = lines.slice(cursor).join('\\n').trim();
+  const trailing = extractTrailingAfterwords(lines.slice(cursor));
+  const bodyMarkdown = trailing.bodyLines.join('\\n').trim();
   const summary = normalizeWhitespace(summaryLines.join(' '));
-  return { title, publishedAt, tags, summary, bodyMarkdown };
+  return { title, publishedAt, tags, summary, bodyMarkdown, afterwords: trailing.afterwords };
+}
+
+function extractInlineAfterwordDate(line) {
+  const input = String(line || '').trim();
+  if (!input) return { text: '', publishedAt: '' };
+  const matched = input.match(/^(.*?)(?:\\s+[&@](.+))$/);
+  if (!matched) return { text: input, publishedAt: '' };
+  const normalized = normalizePublishedAt(matched[2].trim());
+  if (parsePublishedAtSortValue(normalized) === null) return { text: input, publishedAt: '' };
+  return { text: matched[1].trim(), publishedAt: normalized };
+}
+
+function extractTrailingAfterwords(lines) {
+  let scan = lines.length - 1;
+  while (scan >= 0 && !lines[scan].trim()) scan -= 1;
+  if (scan < 0) return { bodyLines: lines, afterwords: [] };
+
+  const afterwords = [];
+
+  while (scan >= 0) {
+    let cursor = scan;
+    let publishedAt = '';
+
+    if (/^[&@]\\s*/.test(lines[cursor].trim())) {
+      const normalized = normalizePublishedAt(lines[cursor].trim().replace(/^[&@]\\s*/, ''));
+      if (parsePublishedAtSortValue(normalized) === null) break;
+      publishedAt = normalized;
+      cursor -= 1;
+      while (cursor >= 0 && !lines[cursor].trim()) cursor -= 1;
+    }
+
+    if (cursor < 0 || !/^>\\s?/.test(lines[cursor].trim())) break;
+
+    const quoteLines = [];
+    while (cursor >= 0 && /^>\\s?/.test(lines[cursor].trim())) {
+      quoteLines.unshift(lines[cursor].trim().replace(/^>\\s?/, ''));
+      cursor -= 1;
+    }
+
+    if (!publishedAt && quoteLines.length) {
+      const inline = extractInlineAfterwordDate(quoteLines[quoteLines.length - 1]);
+      quoteLines[quoteLines.length - 1] = inline.text;
+      publishedAt = inline.publishedAt;
+    }
+
+    const bodyMarkdown = quoteLines.join('\\n').trim();
+    if (!bodyMarkdown) break;
+
+    afterwords.push({
+      bodyMarkdown,
+      publishedAt,
+      sourceIndex: afterwords.length
+    });
+
+    scan = cursor;
+    while (scan >= 0 && !lines[scan].trim()) scan -= 1;
+  }
+
+  if (!afterwords.length) return { bodyLines: lines, afterwords: [] };
+
+  return {
+    bodyLines: lines.slice(0, scan + 1),
+    afterwords: afterwords.reverse()
+  };
 }
 
 function buildCard(article) {
@@ -898,6 +1103,7 @@ function buildCard(article) {
 function parseRuntimeArticle(entry, markdown) {
   const parsed = parseDocumentParts(markdown, entry.slug);
   const inferredSection = inferArticleSection(entry.section, parsed.tags);
+  const articleContext = { slug: entry.slug, section: inferredSection };
   return {
     slug: entry.slug,
     section: inferredSection,
@@ -906,11 +1112,12 @@ function parseRuntimeArticle(entry, markdown) {
     summary: parsed.summary,
     publishedAt: parsed.publishedAt,
     bodyText: stripMarkdown(parsed.bodyMarkdown),
-    html: markdownToHtml(parsed.bodyMarkdown, { slug: entry.slug, section: inferredSection })
+    html: markdownToHtml(parsed.bodyMarkdown, articleContext) + buildAfterwordsHtml(parsed.afterwords)
   };
 }
 
 function inferArticleSection(section, tags) {
+  if (section === 'hidden') return 'hidden';
   if (section && section !== 'article') return section;
   if ((tags || []).some((tag) => ['诗歌', '现代诗', '旧体诗'].includes(tag))) return 'poem';
   if ((tags || []).includes('散文')) return 'essay';
@@ -918,10 +1125,23 @@ function inferArticleSection(section, tags) {
   return 'article';
 }
 
+function compareAfterwordsByDisplayOrder(left, right) {
+  const leftTime = parsePublishedAtSortValue(left.publishedAt);
+  const rightTime = parsePublishedAtSortValue(right.publishedAt);
+  const leftHasTime = leftTime !== null;
+  const rightHasTime = rightTime !== null;
+
+  if (leftHasTime && rightHasTime && leftTime !== rightTime) return rightTime - leftTime;
+  if (leftHasTime !== rightHasTime) return leftHasTime ? -1 : 1;
+
+  return (left.sourceIndex || 0) - (right.sourceIndex || 0);
+}
+
 async function discoverArticleEntries() {
   const rootPath = getSiteRootPath() + '/articles/';
   const visitedDirs = new Set();
-  const discovered = new Map();
+  const discoveredArticles = new Map();
+  const discoveredScripts = new Map();
 
   async function visit(dirUrl) {
     const absoluteDirUrl = new URL(dirUrl, window.location.href).toString();
@@ -944,13 +1164,25 @@ async function discoverArticleEntries() {
       if (/\.md$/i.test(resolvedUrl.pathname)) {
         const mdPath = decodeURIComponent(resolvedUrl.pathname.slice(rootPath.length));
         const slug = resolveArticleSlugFromMdPath(mdPath);
-        if (!discovered.has(slug)) {
-          discovered.set(slug, {
+        if (!discoveredArticles.has(slug)) {
+          discoveredArticles.set(slug, {
             slug,
             mdPath,
             mdUrl: buildSiteUrl('articles/' + mdPath)
           });
         }
+        return;
+      }
+
+      if (/\.js$/i.test(resolvedUrl.pathname)) {
+        const jsPath = decodeURIComponent(resolvedUrl.pathname.slice(rootPath.length));
+        if (!jsPath.startsWith(HIDDEN_ARTICLE_DIR)) return;
+        const slug = resolveArticleSlugFromScriptPath(jsPath);
+        discoveredScripts.set(slug, {
+          slug,
+          jsPath,
+          jsUrl: buildSiteUrl('articles/' + jsPath)
+        });
         return;
       }
 
@@ -962,9 +1194,12 @@ async function discoverArticleEntries() {
 
   try {
     await visit(buildSiteUrl('articles/'));
-    return Array.from(discovered.values());
+    return {
+      articles: Array.from(discoveredArticles.values()),
+      hiddenScripts: Array.from(discoveredScripts.values())
+    };
   } catch (error) {
-    return [];
+    return { articles: [], hiddenScripts: [] };
   }
 }
 
@@ -973,17 +1208,27 @@ async function loadRuntimeArticles() {
     slug: article.slug,
     section: article.section,
     mdPath: article.mdPath,
-    mdUrl: buildSiteUrl('articles/' + article.mdPath)
+    mdUrl: buildSiteUrl('articles/' + article.mdPath),
+    jsPath: article.jsPath || '',
+    jsUrl: article.jsPath ? buildSiteUrl('articles/' + article.jsPath) : ''
   }]));
-  const discoveredEntries = await discoverArticleEntries();
-  discoveredEntries.forEach((entry) => {
+  const discoveredResources = await discoverArticleEntries();
+  discoveredResources.articles.forEach((entry) => {
     const previous = manifestMap.get(entry.slug);
     manifestMap.set(entry.slug, {
       slug: entry.slug,
-      section: previous && previous.section ? previous.section : 'article',
+      section: previous && previous.section ? previous.section : (isHiddenArticleEntry(entry) ? 'hidden' : 'article'),
       mdPath: entry.mdPath,
-      mdUrl: entry.mdUrl
+      mdUrl: entry.mdUrl,
+      jsPath: previous && previous.jsPath ? previous.jsPath : '',
+      jsUrl: previous && previous.jsUrl ? previous.jsUrl : ''
     });
+  });
+  discoveredResources.hiddenScripts.forEach((script) => {
+    const previous = manifestMap.get(script.slug);
+    if (!previous) return;
+    previous.jsPath = script.jsPath;
+    previous.jsUrl = script.jsUrl;
   });
 
   const entries = Array.from(manifestMap.values());
@@ -1003,10 +1248,21 @@ async function loadRuntimeArticles() {
 
   const homeSlots = HOME_SLOT_SLUGS.map((slug) => loaded.find((item) => item.slug === slug)).filter(Boolean);
   const hiddenSlugs = new Set(HOME_SLOT_SLUGS);
+  const hiddenArticles = loaded
+    .filter((item) => item.section === 'hidden')
+    .map((item) => {
+      const matched = manifestMap.get(item.slug);
+      return {
+        ...item,
+        jsPath: matched && matched.jsPath ? matched.jsPath : '',
+        jsUrl: matched && matched.jsUrl ? matched.jsUrl : ''
+      };
+    });
 
   return {
     homeSlots,
-    articles: loaded.filter((item) => !hiddenSlugs.has(item.slug))
+    hiddenArticles,
+    articles: loaded.filter((item) => !hiddenSlugs.has(item.slug) && item.section !== 'hidden')
   };
 }
 
@@ -1054,11 +1310,136 @@ function initArticleModal(runtimeData) {
   const close = document.getElementById('article-modal-close');
   if (!modal || !title || !meta || !side || !time || !summary || !body || !close) return;
 
-  const articleMap = new Map(runtimeData.homeSlots.concat(runtimeData.articles).map((article) => [article.slug, article]));
+  const articleMap = new Map(runtimeData.homeSlots.concat(runtimeData.articles, runtimeData.hiddenArticles || []).map((article) => [article.slug, article]));
+  let currentArticleSlug = '';
+  let modalTitleAction = null;
+  const articleOpenListeners = [];
+  const articleCloseListeners = [];
+  const keydownListeners = [];
+  const hiddenTriggerFactories = [];
+
+  function applyModalTitleAction(action) {
+    modalTitleAction = action || null;
+    const enabled = !!modalTitleAction;
+    title.classList.toggle('is-secret-trigger', enabled);
+    title.tabIndex = enabled ? 0 : -1;
+    if (enabled) {
+      title.setAttribute('role', 'button');
+      title.setAttribute('aria-label', modalTitleAction.ariaLabel || title.textContent);
+    } else {
+      title.removeAttribute('role');
+      title.removeAttribute('aria-label');
+    }
+  }
+
+  function addHiddenListener(store, handler) {
+    if (typeof handler !== 'function') return function noop() {};
+    store.push(handler);
+    return () => {
+      const index = store.indexOf(handler);
+      if (index >= 0) store.splice(index, 1);
+    };
+  }
+
+  function emitHiddenListeners(store, payload) {
+    store.slice().forEach((handler) => {
+      try {
+        handler(payload);
+      } catch (error) {
+        console.warn('[hidden-trigger] listener failed:', error);
+      }
+    });
+  }
+
+  function createArticleOpenPayload(article) {
+    return {
+      slug: article.slug,
+      article,
+      openArticle,
+      open(slug) {
+        openArticle(slug);
+      },
+      setTitleAction(config) {
+        if (!config || currentArticleSlug !== article.slug) return;
+        applyModalTitleAction({
+          ariaLabel: config.ariaLabel || article.title,
+          activate: typeof config.activate === 'function'
+            ? config.activate
+            : () => {
+                if (config.targetSlug) openArticle(config.targetSlug);
+              }
+        });
+      },
+      clearTitleAction() {
+        if (currentArticleSlug === article.slug) applyModalTitleAction(null);
+      }
+    };
+  }
+
+  function createHiddenTriggerApi(article) {
+    return {
+      slug: article.slug,
+      article,
+      open() {
+        openArticle(article.slug);
+      },
+      openArticle,
+      onArticleOpen(handler) {
+        return addHiddenListener(articleOpenListeners, handler);
+      },
+      onArticleClose(handler) {
+        return addHiddenListener(articleCloseListeners, handler);
+      },
+      onKeydown(handler) {
+        return addHiddenListener(keydownListeners, handler);
+      }
+    };
+  }
+
+  function loadHiddenTriggerScript(article) {
+    if (!article || !article.jsUrl) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      const scriptUrl = new URL(article.jsUrl, window.location.href);
+      scriptUrl.searchParams.set('_', String(Date.now()));
+      script.src = scriptUrl.toString();
+      script.async = false;
+      script.dataset.hiddenSlug = article.slug;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load hidden trigger script: ' + article.jsUrl));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function initHiddenTriggerScripts() {
+    window.__registerHiddenArticleTrigger = function registerHiddenArticleTrigger(factory) {
+      const currentScript = document.currentScript;
+      const slug = currentScript && currentScript.dataset ? currentScript.dataset.hiddenSlug || '' : '';
+      if (!slug || typeof factory !== 'function') return;
+      hiddenTriggerFactories.push({ slug, factory });
+    };
+
+    const hiddenWithScripts = (runtimeData.hiddenArticles || []).filter((article) => article.jsUrl);
+    for (const article of hiddenWithScripts) {
+      await loadHiddenTriggerScript(article);
+    }
+
+    hiddenTriggerFactories.forEach(({ slug, factory }) => {
+      const article = articleMap.get(slug);
+      if (!article) return;
+      try {
+        factory(createHiddenTriggerApi(article));
+      } catch (error) {
+        console.warn('[hidden-trigger] setup failed:', slug, error);
+      }
+    });
+  }
 
   function openArticle(slug) {
     const article = articleMap.get(slug);
     if (!article) return;
+    currentArticleSlug = slug;
+    applyModalTitleAction(null);
     title.textContent = article.title;
     meta.textContent = formatModalMeta(article);
     meta.hidden = !meta.textContent;
@@ -1068,7 +1449,7 @@ function initArticleModal(runtimeData) {
     summary.hidden = !summary.textContent;
     side.hidden = time.hidden && summary.hidden;
     modal.classList.toggle('has-modal-side', !side.hidden);
-    body.className = 'article-modal-body article-body' + (article.section === 'poem' ? ' poem-body' : '');
+    body.className = 'article-modal-body article-body' + (article.section === 'poem' ? ' poem-body' + getPoemBodyVariantClass(article) : '');
     body.innerHTML = article.html;
     modal.scrollTop = 0;
     modal.classList.add('active');
@@ -1077,12 +1458,18 @@ function initArticleModal(runtimeData) {
     requestAnimationFrame(() => {
       modal.scrollTop = 0;
     });
+    emitHiddenListeners(articleOpenListeners, createArticleOpenPayload(article));
   }
 
   function closeArticle() {
+    const closedSlug = currentArticleSlug;
+    const closedArticle = closedSlug ? articleMap.get(closedSlug) : null;
     modal.classList.remove('active');
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('has-modal-open');
+    currentArticleSlug = '';
+    applyModalTitleAction(null);
+    if (closedSlug) emitHiddenListeners(articleCloseListeners, { slug: closedSlug, article: closedArticle, openArticle });
   }
 
   document.addEventListener('click', (event) => {
@@ -1099,8 +1486,28 @@ function initArticleModal(runtimeData) {
   });
 
   close.addEventListener('click', closeArticle);
+  title.addEventListener('click', () => {
+    if (!modalTitleAction || typeof modalTitleAction.activate !== 'function') return;
+    modalTitleAction.activate();
+  });
+  title.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if (!modalTitleAction || typeof modalTitleAction.activate !== 'function') return;
+    event.preventDefault();
+    modalTitleAction.activate();
+  });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeArticle();
+    emitHiddenListeners(keydownListeners, {
+      event,
+      key: event.key,
+      normalizedKey: String(event.key || '').length === 1 ? String(event.key).toLowerCase() : String(event.key || ''),
+      openArticle
+    });
+  });
+
+  initHiddenTriggerScripts().catch((error) => {
+    console.warn('[hidden-trigger] bootstrap failed:', error);
   });
 }
 
@@ -1347,6 +1754,15 @@ function buildStyles() {
 }
 
 * { box-sizing: border-box; }
+* {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
@@ -1395,7 +1811,6 @@ a { color: inherit; text-decoration: none; }
 }
 
 .brandmark-sub,
-.header-link,
 .article-card-meta,
 .filter-button span {
   text-transform: uppercase;
@@ -1403,22 +1818,6 @@ a { color: inherit; text-decoration: none; }
 }
 
 .brandmark-sub { font-size: 0.72rem; color: var(--text-muted); transition: font-size 180ms ease; }
-.header-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  justify-self: end;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.header-icon {
-  display: block;
-  width: 18px;
-  height: 18px;
-}
 
 .site-header.is-condensed .header-inner {
   gap: 14px;
@@ -1714,9 +2113,17 @@ a { color: inherit; text-decoration: none; }
   line-height: 0.96;
 }
 
+.article-modal-title.is-secret-trigger {
+  cursor: pointer;
+}
+
+.article-modal-title.is-secret-trigger:hover,
+.article-modal-title.is-secret-trigger:focus-visible {
+  opacity: 0.82;
+}
+
 .article-modal.has-modal-side .article-modal-title {
-  flex-basis: calc((100% - 24px) * 2 / 3);
-  min-width: calc((100% - 24px) * 2 / 3);
+  flex: 2 1 0;
 }
 
 .article-modal-side {
@@ -1731,8 +2138,8 @@ a { color: inherit; text-decoration: none; }
 }
 
 .article-modal.has-modal-side .article-modal-side {
-  flex-basis: auto;
-  max-width: min(32ch, calc((100% - 24px) / 3));
+  flex: 1 1 0;
+  width: auto;
 }
 
 .article-modal-time {
@@ -1831,10 +2238,44 @@ a { color: inherit; text-decoration: none; }
 .article-body pre { margin: 1rem 0; }
 
 .article-body ul,
-.article-body ol { padding-left: 1.35rem; }
+.article-body ol {
+  margin-left: 0;
+  padding-left: 0;
+  list-style-position: inside;
+}
 .article-body li { margin: 0.45rem 0; }
 .article-body a,
 .site-footer a { color: var(--accent); text-decoration: underline; text-underline-offset: 4px; }
+
+.article-afterwords {
+  margin-top: 40px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 16px;
+}
+
+.article-afterword {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: #fafafa;
+}
+
+.article-afterword-time {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  justify-self: start;
+}
+
+.article-afterword-content {
+  color: var(--text-muted);
+  line-height: 1.75;
+  white-space: normal;
+}
 
 .code-block {
   overflow-x: auto;
@@ -1854,10 +2295,11 @@ a { color: inherit; text-decoration: none; }
 }
 
 .poem-body {
-  max-width: 780px;
-  padding-right: 1.5vw;
   line-height: 1.95;
 }
+
+.poem-body.is-modern-poem .poem-line { text-align: left; }
+.poem-body.is-classic-poem .poem-line { text-align: center; }
 
 .poem-line { margin: 0.3rem 0; color: var(--text); }
 
@@ -1897,10 +2339,6 @@ a { color: inherit; text-decoration: none; }
   .directory-sidebar { position: static; }
   .article-directory { grid-template-columns: 1fr; }
   .article-modal-dialog { margin-top: 72px; }
-  .article-modal-heading { flex-direction: column; gap: 12px; }
-  .article-modal.has-modal-side .article-modal-title { min-width: 0; flex-basis: auto; }
-  .article-modal.has-modal-side .article-modal-side { max-width: none; }
-  .article-modal-side { justify-items: start; text-align: left; }
   .article-card-main { grid-template-columns: 1fr; }
   .article-card-main p { text-align: left; }
 }
@@ -1918,6 +2356,10 @@ a { color: inherit; text-decoration: none; }
   .article-modal-dialog { width: calc(100vw - 24px); margin: 60px auto 24px; }
   .article-modal-header,
   .article-modal-scroll { padding-left: 16px; padding-right: 16px; }
+  .article-modal-heading { flex-direction: column; gap: 12px; }
+  .article-modal.has-modal-side .article-modal-title { min-width: 0; flex: 1 1 auto; }
+  .article-modal.has-modal-side .article-modal-side { width: auto; max-width: none; flex: 1 1 auto; }
+  .article-modal-side { justify-items: start; text-align: left; }
 }
   `.trim();
 }
@@ -1941,7 +2383,7 @@ function copyAlgorithmAssets() {
 }
 
 function main() {
-  const editableSources = snapshotEditableMarkdownSources();
+  const editableSources = snapshotEditableContentSources();
   const imageSnapshots = snapshotDirectoryFiles(path.join(OUT_DIR, 'assets', 'images'));
   resetOutput();
   restoreDirectoryFiles(path.join(OUT_DIR, 'assets', 'images'), imageSnapshots);
@@ -1949,7 +2391,7 @@ function main() {
   const articles = [];
 
   for (const [slug, source] of editableSources.articles.entries()) {
-    const record = buildArticleRecord(source.filePath, slug, source, assetCollector);
+    const record = buildArticleRecord(source.filePath, slug, source, editableSources.hiddenScripts, assetCollector);
     articles.push(record);
   }
 
@@ -1966,6 +2408,9 @@ function main() {
   writeFile(path.join(OUT_DIR, 'index.html'), buildHomePage());
   for (const [, source] of editableSources.articles.entries()) {
     writeFile(path.join(OUT_DIR, 'articles', source.mdPath), source.markdown);
+  }
+  for (const [, source] of editableSources.hiddenScripts.entries()) {
+    writeFile(path.join(OUT_DIR, 'articles', source.jsPath), source.content);
   }
   writeFile(
     path.join(OUT_DIR, 'README.md'),
