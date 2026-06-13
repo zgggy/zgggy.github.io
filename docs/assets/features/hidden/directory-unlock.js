@@ -6,7 +6,7 @@ window.__registerSiteFeature?.(({
   let clickHintTimer = null;
 
   function showClickHint(clientX, clientY, count) {
-    if (count <= 10 || count > 20) return;
+    if (count <= 10 || count > 100) return;
 
     const existing = document.getElementById('all-filter-click-hint');
     if (existing) existing.remove();
@@ -15,14 +15,14 @@ window.__registerSiteFeature?.(({
       clickHintTimer = null;
     }
 
-    const progress = (count - 10) / 10;
+    const progress = (count - 10) / 90;
     const hint = document.createElement('div');
     hint.id = 'all-filter-click-hint';
     hint.textContent = String(count);
     hint.setAttribute('aria-hidden', 'true');
     hint.style.position = 'fixed';
     hint.style.left = Math.round(typeof clientX === 'number' ? clientX : window.innerWidth / 2) + 'px';
-    hint.style.top = Math.round(typeof clientY === 'number' ? clientY : window.innerHeight / 2) + 'px';
+    hint.style.top = Math.round((typeof clientY === 'number' ? clientY : window.innerHeight / 2) - (10 + progress * 18)) + 'px';
     hint.style.transform = 'translate(-50%, -50%) scale(0.86)';
     hint.style.pointerEvents = 'none';
     hint.style.zIndex = '9999';
@@ -55,7 +55,7 @@ window.__registerSiteFeature?.(({
     const event = payload.event;
     showClickHint(event && event.clientX, event && event.clientY, payload.count || 0);
 
-    if ((payload.count || 0) >= 20) {
+    if ((payload.count || 0) >= 100) {
       unlockHiddenDirectory();
     }
   });
