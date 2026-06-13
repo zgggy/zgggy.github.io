@@ -389,7 +389,9 @@ class PathPlanner {
                             ? 0.35
                             : 0
                     );
-                    const totalCost = dp[x][y] + stepCost + steeringCost + edgeBias;
+                    const centerDist = Math.abs(newY - maxRow / 2) / (maxRow / 2 || 1);
+                    const centerCost = centerDist * 0.4;
+                    const totalCost = dp[x][y] + stepCost + steeringCost + edgeBias + centerCost;
 
                     if (totalCost < dp[x + 1][newY]) {
                         dp[x + 1][newY] = totalCost;
@@ -466,61 +468,23 @@ class PathPlanner {
     smoothPath(path) {
         if (path.length < 3) return path;
         
-        // 使用二次移动平均平滑算法
         const smoothedPath = [];
-        
-        // 第一次移动平均
-        const firstPass = [];
         const windowSize = 3;
         
-        // 保持起点
-        firstPass.push(path[0]);
+        smoothedPath.push(path[0]);
         
-        // 平滑中间点
         for (let i = 1; i < path.length - 1; i++) {
             let sumY = 0;
             let count = 0;
-            
-            // 计算窗口内的平均值
             for (let j = Math.max(0, i - windowSize + 1); j <= Math.min(path.length - 1, i + windowSize - 1); j++) {
                 sumY += path[j].y;
                 count++;
             }
-            
-            const x = path[i].x;
-            const y = sumY / count;
-            
-            firstPass.push({ x, y });
+            smoothedPath.push({ x: path[i].x, y: sumY / count });
         }
         
-        // 保持终点
-        firstPass.push(path[path.length - 1]);
+        smoothedPath.push(path[path.length - 1]);
         
-        // 第二次移动平均，进一步平滑
-        // 保持起点
-        smoothedPath.push(firstPass[0]);
-        
-        // 平滑中间点
-        for (let i = 1; i < firstPass.length - 1; i++) {
-            let sumY = 0;
-            let count = 0;
-            
-            // 计算窗口内的平均值
-            for (let j = Math.max(0, i - windowSize + 1); j <= Math.min(firstPass.length - 1, i + windowSize - 1); j++) {
-                sumY += firstPass[j].y;
-                count++;
-            }
-            
-            const x = firstPass[i].x;
-            const y = sumY / count;
-            
-            smoothedPath.push({ x, y });
-        }
-        
-        // 保持终点
-        smoothedPath.push(firstPass[firstPass.length - 1]);
-        
-        // 最后再次检查所有点是否在边界内
         for (let i = 0; i < smoothedPath.length; i += 1) {
             const { x, y } = smoothedPath[i];
             const { upperBound, lowerBound } = this.getBounds(x);
@@ -539,6 +503,21 @@ class PathPlanner {
         const newPath = this.dynamicProgramming();
         this.path = newPath;
         this.lastPath = [...newPath];
+    }
+
+    tickPathTransition() {
+        if (!this.path || this.path.length < 2) return;
+
+        if (!this._displayPath || this._displayPath.length !== this.path.length) {
+            this._displayPath = this.path.map(p => ({ x: p.x, y: p.y }));
+            return;
+        }
+
+        const lerp = 0.15;
+        for (let i = 0; i < this._displayPath.length; i += 1) {
+            this._displayPath[i].x = this.path[i].x;
+            this._displayPath[i].y += (this.path[i].y - this._displayPath[i].y) * lerp;
+        }
     }
     
     draw() {
@@ -559,6 +538,7 @@ class PathPlanner {
     }
 
     getDisplayPath() {
+        if (this._displayPath && this._displayPath.length > 1) return this._displayPath;
         if (this.path && this.path.length > 1) return this.path;
         const { centerY } = this.getPlanningFrame();
         return [
@@ -676,6 +656,7 @@ class PathPlanner {
             if (currentTime - lastTime >= updateInterval) {
                 self.updateFloat();
                 self.updatePath();
+                self.tickPathTransition();
                 self.draw();
                 lastTime = currentTime;
             }

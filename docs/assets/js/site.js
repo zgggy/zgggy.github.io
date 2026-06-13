@@ -1065,7 +1065,8 @@ function initHomeDirectory(runtimeData) {
           count: filterKey === 'all' ? allFilterClickCount : 0,
           activeSection,
           unlockHiddenDirectory: unlockHiddenDirectoryFromBridge,
-          isHiddenDirectoryUnlocked: isHiddenDirectoryUnlockedFromBridge
+          isHiddenDirectoryUnlocked: isHiddenDirectoryUnlockedFromBridge,
+          resetCount() { allFilterClickCount = 0; }
         });
         activeSection = filterKey;
         renderFilters();

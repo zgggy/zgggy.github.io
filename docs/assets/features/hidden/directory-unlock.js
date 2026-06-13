@@ -4,6 +4,7 @@ window.__registerSiteFeature?.(({
   isHiddenDirectoryUnlocked
 }) => {
   let clickHintTimer = null;
+  let resetTimer = null;
 
   function showClickHint(clientX, clientY, count) {
     if (count <= 10 || count > 100) return;
@@ -54,6 +55,16 @@ window.__registerSiteFeature?.(({
 
     const event = payload.event;
     showClickHint(event && event.clientX, event && event.clientY, payload.count || 0);
+
+    // 2 秒无点击则重置计数
+    if (resetTimer) window.clearTimeout(resetTimer);
+    resetTimer = window.setTimeout(() => {
+      payload.resetCount?.();
+      // 移除残留的数字提示
+      const existing = document.getElementById('all-filter-click-hint');
+      if (existing) existing.remove();
+      resetTimer = null;
+    }, 2000);
 
     if ((payload.count || 0) >= 100) {
       unlockHiddenDirectory();
