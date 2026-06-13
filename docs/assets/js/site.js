@@ -950,6 +950,11 @@ function initArticleModal(runtimeData) {
     requestAnimationFrame(() => {
       modal.scrollTop = 0;
     });
+    // 更新hash路由
+    const newHash = '#/article/' + encodeURIComponent(slug);
+    if (window.location.hash !== newHash) {
+      history.pushState({ articleSlug: slug }, '', newHash);
+    }
     emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.articleOpenListeners, createArticleOpenPayload(article));
   }
 
@@ -960,7 +965,35 @@ function initArticleModal(runtimeData) {
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('has-modal-open');
     currentArticleSlug = '';
+    // 清除hash
+    if (window.location.hash.startsWith('#/article/')) {
+      history.pushState(null, '', window.location.pathname + window.location.search);
+    }
     if (closedSlug) emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.articleCloseListeners, { slug: closedSlug, article: closedArticle, openArticle });
+  }
+
+  // 处理hash路由
+  function handleHashChange() {
+    const hash = window.location.hash;
+    if (hash.startsWith('#/article/')) {
+      const slug = decodeURIComponent(hash.slice('#/article/'.length));
+      if (slug && slug !== currentArticleSlug) {
+        openArticle(slug);
+      }
+    } else if (currentArticleSlug) {
+      closeArticle();
+    }
+  }
+
+  // 监听hash变化
+  window.addEventListener('hashchange', handleHashChange);
+
+  // 页面加载时检查hash
+  if (window.location.hash.startsWith('#/article/')) {
+    // 延迟执行，确保文章数据已加载
+    setTimeout(() => {
+      handleHashChange();
+    }, 100);
   }
 
   document.addEventListener('click', (event) => {
