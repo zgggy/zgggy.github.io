@@ -57,21 +57,22 @@ a { color: inherit; text-decoration: none; }
 }
 
 .header-inner {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: var(--space);
+  display: flex;
   align-items: center;
-  padding: 18px 24px 16px;
-  transition: padding 180ms ease, gap 180ms ease;
+  padding: 8px 24px;
 }
 
-.brandmark { display: inline-flex; flex-direction: column; gap: 4px; transition: gap 180ms ease; }
+.brandmark {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+}
 .brandmark-main {
-  font-size: 1.05rem;
+  display: block;
+  font-size: 0.94rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1;
-  transition: font-size 180ms ease;
 }
 
 .brandmark-sub,
@@ -81,17 +82,13 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: 0.08em;
 }
 
-.brandmark-sub { font-size: 0.72rem; color: var(--text-muted); transition: font-size 180ms ease; }
-
-.site-header.is-condensed .header-inner {
-  gap: 14px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+.brandmark-sub {
+  position: static;
+  font-size: 0.64rem;
+  color: var(--text-muted);
+  line-height: 1;
+  white-space: nowrap;
 }
-
-.site-header.is-condensed .brandmark { gap: 0; }
-.site-header.is-condensed .brandmark-main { font-size: 0.94rem; }
-.site-header.is-condensed .brandmark-sub { display: none; }
 
 .page-shell { padding: calc(var(--space) + 8px) 24px 72px; }
 .card-surface { border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }

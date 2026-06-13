@@ -1,11 +1,9 @@
 window.__registerHiddenArticleTrigger?.(({ open }) => {
-  document.addEventListener('click', (event) => {
-    const target = event.target instanceof Element ? event.target.closest('.feature-live-text') : null;
-    if (!target) return;
+  const utils = window.__hiddenFeatureUtils__;
+  if (!utils || typeof utils.onFeatureLiveTextClick !== 'function') return;
 
-    const text = (target.textContent || '').trim();
-    if (!/零个小时零分钟零秒(?:要久，?)?$/.test(text)) return;
-
-    open();
-  });
+  utils.onFeatureLiveTextClick(
+    ({ text }) => /零个小时零分钟零秒(?:要久，?)?$/.test(text),
+    open
+  );
 });

@@ -1,6 +1,68 @@
 const HOME_SLOT_SLUGS = ["hero","lovestory1","lovestory2","lovestory3","midline","footer"];
-const LOVE_TIMER_START = "2013-05-08T00:00:00+08:00";
 const HIDDEN_ARTICLE_DIR = "hidden/";
+const SITE_GITHUB_SOURCE = {
+  owner: 'zgggy',
+  repo: 'zgggy.github.io',
+  branch: 'main',
+  docsDir: 'docs'
+};
+const SITE_SCRIPT_URL = (() => {
+  const matchedScript = Array.from(document.scripts || []).find((script) => {
+    try {
+      return /\/assets\/js\/site\.js(?:[?#].*)?$/.test(new URL(script.src, window.location.href).pathname);
+    } catch (error) {
+      return false;
+    }
+  });
+  return new URL(matchedScript && matchedScript.src ? matchedScript.src : './assets/js/site.js', window.location.href);
+})();
+const SITE_ROOT_URL = new URL('../../', SITE_SCRIPT_URL);
+const RUNTIME_LINK_MAP = Object.create(null);
+let githubTreeCachePromise = null;
+const HIDDEN_RUNTIME_BRIDGE = {
+  articleOpenListeners: [],
+  articleCloseListeners: [],
+  keydownListeners: [],
+  homeSlotListeners: [],
+  appReadyListeners: [],
+  directoryFilterListeners: [],
+  hiddenDirectoryController: null
+};
+
+function addHiddenRuntimeListener(bucket, handler) {
+  if (typeof handler !== 'function') return function noop() {};
+  bucket.push(handler);
+  return () => {
+    const index = bucket.indexOf(handler);
+    if (index >= 0) bucket.splice(index, 1);
+  };
+}
+
+function emitHiddenRuntimeListeners(bucket, payload) {
+  bucket.slice().forEach((handler) => {
+    try {
+      handler(payload);
+    } catch (error) {
+      console.warn('[hidden-trigger] listener failed:', error);
+    }
+  });
+}
+
+function setHiddenDirectoryController(controller) {
+  HIDDEN_RUNTIME_BRIDGE.hiddenDirectoryController = controller || null;
+}
+
+function unlockHiddenDirectoryFromBridge() {
+  const controller = HIDDEN_RUNTIME_BRIDGE.hiddenDirectoryController;
+  if (!controller || typeof controller.unlock !== 'function') return false;
+  return !!controller.unlock();
+}
+
+function isHiddenDirectoryUnlockedFromBridge() {
+  const controller = HIDDEN_RUNTIME_BRIDGE.hiddenDirectoryController;
+  if (!controller || typeof controller.isUnlocked !== 'function') return false;
+  return !!controller.isUnlocked();
+}
 
 function escapeHtml(input) {
   return input
@@ -17,10 +79,6 @@ function getArticleCategory(article) {
 
 function getArticleTagText(article) {
   return article.tags && article.tags.length > 1 ? article.tags.slice(1).join(' ') : '';
-}
-
-function formatArticleMeta(article) {
-  return [getArticleCategory(article), article.publishedAt, getArticleTagText(article)].filter(Boolean).join(' / ');
 }
 
 function formatModalMeta(article) {
@@ -47,11 +105,11 @@ function normalizeArticleMdPath(input) {
 
 function buildSiteUrl(relativePath) {
   const normalized = String(relativePath || '').replace(/^\/+/, '');
-  return new URL(window.__SITE_DATA__.site.root + '/' + normalized, window.location.href).toString();
+  return new URL(normalized, SITE_ROOT_URL).toString();
 }
 
 function getSiteRootPath() {
-  return new URL(window.__SITE_DATA__.site.root + '/', window.location.href).pathname.replace(/\/$/, '');
+  return SITE_ROOT_URL.pathname.replace(/\/$/, '');
 }
 
 function padDatePart(value) {
@@ -128,103 +186,6 @@ function compareArticlesByDisplayOrder(left, right) {
   return String(left.title || '').localeCompare(String(right.title || ''), 'zh-CN-u-co-pinyin', { sensitivity: 'base' });
 }
 
-function numberToChinese(value) {
-  const digits = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-  const units = ['', '十', '百', '千'];
-  const safeValue = Math.max(0, Math.floor(Number(value) || 0));
-  if (safeValue === 0) return digits[0];
-
-  let remaining = safeValue;
-  let unitIndex = 0;
-  let result = '';
-  let zeroPending = false;
-
-  while (remaining > 0) {
-    const digit = remaining % 10;
-    if (digit === 0) {
-      zeroPending = result.length > 0;
-    } else {
-      const chunk = digits[digit] + units[unitIndex];
-      result = (zeroPending ? digits[0] : '') + chunk + result;
-      zeroPending = false;
-    }
-    remaining = Math.floor(remaining / 10);
-    unitIndex += 1;
-  }
-
-  return result.replace(/^一十/, '十');
-}
-
-function formatDurationSince(start, end) {
-  if (!(start instanceof Date) || Number.isNaN(start.getTime())) return '';
-  const safeEnd = end instanceof Date && !Number.isNaN(end.getTime()) ? end : new Date();
-  if (safeEnd <= start) return '我喜欢你比零年零个月零天零个小时零分钟零秒要久，';
-
-  const cursor = new Date(start.getTime());
-  let years = 0;
-  let months = 0;
-
-  while (true) {
-    const next = new Date(cursor.getTime());
-    next.setFullYear(next.getFullYear() + 1);
-    if (next <= safeEnd) {
-      cursor.setTime(next.getTime());
-      years += 1;
-      continue;
-    }
-    break;
-  }
-
-  while (true) {
-    const next = new Date(cursor.getTime());
-    next.setMonth(next.getMonth() + 1);
-    if (next <= safeEnd) {
-      cursor.setTime(next.getTime());
-      months += 1;
-      continue;
-    }
-    break;
-  }
-
-  let remaining = Math.max(0, safeEnd.getTime() - cursor.getTime());
-  const dayMs = 24 * 60 * 60 * 1000;
-  const hourMs = 60 * 60 * 1000;
-  const minuteMs = 60 * 1000;
-  const secondMs = 1000;
-
-  const days = Math.floor(remaining / dayMs);
-  remaining -= days * dayMs;
-  const hours = Math.floor(remaining / hourMs);
-  remaining -= hours * hourMs;
-  const minutes = Math.floor(remaining / minuteMs);
-  remaining -= minutes * minuteMs;
-  const seconds = Math.floor(remaining / secondMs);
-
-  return '我喜欢你比' +
-    numberToChinese(years) + '年' +
-    numberToChinese(months) + '个月' +
-    numberToChinese(days) + '天' +
-    numberToChinese(hours) + '个小时' +
-    numberToChinese(minutes) + '分钟' +
-    numberToChinese(seconds) + '秒要久，';
-}
-
-function mountLiveDuration(node) {
-  const textNode = document.createElement('span');
-  textNode.className = 'feature-live-text';
-  node.replaceChildren(textNode);
-  node.classList.add('is-live-duration', 'is-placeholder');
-
-  const startedAt = new Date(LOVE_TIMER_START);
-  const render = () => {
-    textNode.textContent = formatDurationSince(startedAt, new Date());
-  };
-
-  render();
-  if (node.__liveDurationTimer) window.clearInterval(node.__liveDurationTimer);
-  node.__liveDurationTimer = window.setInterval(render, 1000);
-}
-
 function normalizeWhitespace(input) {
   return input.replace(/\s+/g, ' ').trim();
 }
@@ -268,7 +229,7 @@ function resolveArticleSlugFromHref(href) {
   const normalized = siteRootPath && sanitized.startsWith(siteRootPath + '/')
     ? sanitized.slice(siteRootPath.length)
     : sanitized;
-  return window.__SITE_DATA__.linkMap && (window.__SITE_DATA__.linkMap[sanitized] || window.__SITE_DATA__.linkMap[normalized]);
+  return RUNTIME_LINK_MAP[sanitized] || RUNTIME_LINK_MAP[normalized];
 }
 
 function resolveRuntimeAsset(rawHref, article) {
@@ -589,6 +550,42 @@ function inferArticleSection(section, tags) {
   return 'article';
 }
 
+function inferSectionFromMdPath(mdPath) {
+  const firstSegment = normalizeArticleMdPath(mdPath).split('/').filter(Boolean)[0] || '';
+  if (firstSegment === 'hidden') return 'hidden';
+  if (['essay', 'poem', 'tech', 'article'].includes(firstSegment)) return firstSegment;
+  return 'article';
+}
+
+function clearRuntimeLinkMap() {
+  Object.keys(RUNTIME_LINK_MAP).forEach((key) => {
+    delete RUNTIME_LINK_MAP[key];
+  });
+}
+
+function registerRuntimeLinkAlias(pathname, slug) {
+  const siteRootPath = getSiteRootPath();
+  const normalizedPath = '/' + String(pathname || '').replace(/^\/+/, '');
+  const encodedPath = encodeURI(normalizedPath);
+  RUNTIME_LINK_MAP[normalizedPath] = slug;
+  RUNTIME_LINK_MAP[encodedPath] = slug;
+  if (siteRootPath && siteRootPath !== '/') {
+    RUNTIME_LINK_MAP[siteRootPath + normalizedPath] = slug;
+    RUNTIME_LINK_MAP[siteRootPath + encodedPath] = slug;
+  }
+}
+
+function rebuildRuntimeLinkMap(articles) {
+  clearRuntimeLinkMap();
+  (articles || []).forEach((article) => {
+    if (!article || !article.slug || !article.mdPath) return;
+    registerRuntimeLinkAlias('articles/' + article.mdPath, article.slug);
+    if (article.mdPath !== article.slug + '.md') {
+      registerRuntimeLinkAlias('articles/' + article.slug + '.md', article.slug);
+    }
+  });
+}
+
 function compareAfterwordsByDisplayOrder(left, right) {
   const leftTime = parsePublishedAtSortValue(left.publishedAt);
   const rightTime = parsePublishedAtSortValue(right.publishedAt);
@@ -601,7 +598,7 @@ function compareAfterwordsByDisplayOrder(left, right) {
   return (left.sourceIndex || 0) - (right.sourceIndex || 0);
 }
 
-async function discoverArticleEntries() {
+async function discoverArticleEntriesFromDirectory() {
   const rootPath = getSiteRootPath() + '/articles/';
   const visitedDirs = new Set();
   const discoveredArticles = new Map();
@@ -667,25 +664,176 @@ async function discoverArticleEntries() {
   }
 }
 
+async function discoverAlgorithmEntriesFromDirectory() {
+  try {
+    const response = await fetch(buildSiteUrl('assets/algorithms/'), { cache: 'no-store' });
+    if (!response.ok) throw new Error('Failed to read algorithms directory');
+    const html = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    return Array.from(doc.querySelectorAll('a'))
+      .map((link) => link.getAttribute('href') || '')
+      .filter((href) => /\.js$/i.test(href) && !/\.worker\.js$/i.test(href))
+      .map((href) => decodeURIComponent(new URL(href, buildSiteUrl('assets/algorithms/')).pathname.split('/assets/algorithms/')[1] || ''))
+      .filter(Boolean)
+      .sort();
+  } catch (error) {
+    return [];
+  }
+}
+
+function fetchGitHubTree() {
+  if (!githubTreeCachePromise) {
+    const apiUrl = 'https://api.github.com/repos/' +
+      encodeURIComponent(SITE_GITHUB_SOURCE.owner) + '/' +
+      encodeURIComponent(SITE_GITHUB_SOURCE.repo) +
+      '/git/trees/' + encodeURIComponent(SITE_GITHUB_SOURCE.branch) + '?recursive=1';
+    githubTreeCachePromise = fetch(apiUrl, {
+      headers: { Accept: 'application/vnd.github+json' },
+      cache: 'no-store'
+    }).then(async (response) => {
+      if (!response.ok) throw new Error('Failed to fetch GitHub tree: ' + response.status);
+      const payload = await response.json();
+      return Array.isArray(payload.tree) ? payload.tree : [];
+    });
+  }
+  return githubTreeCachePromise;
+}
+
+async function discoverSiteEntriesFromGitHub() {
+  try {
+    const tree = await fetchGitHubTree();
+    const docsPrefix = normalizeArticleMdPath(SITE_GITHUB_SOURCE.docsDir) + '/';
+    const articlePrefix = docsPrefix + 'articles/';
+    const algorithmPrefix = docsPrefix + 'assets/algorithms/';
+    const articles = new Map();
+    const hiddenScripts = new Map();
+    const algorithms = new Set();
+
+    tree.forEach((entry) => {
+      if (!entry || entry.type !== 'blob' || !entry.path) return;
+      const entryPath = String(entry.path);
+      if (entryPath.startsWith(articlePrefix) && /\.md$/i.test(entryPath)) {
+        const mdPath = entryPath.slice(articlePrefix.length);
+        const slug = resolveArticleSlugFromMdPath(mdPath);
+        if (!articles.has(slug)) {
+          articles.set(slug, {
+            slug,
+            section: inferSectionFromMdPath(mdPath),
+            mdPath,
+            mdUrl: buildSiteUrl('articles/' + mdPath)
+          });
+        }
+        return;
+      }
+      if (entryPath.startsWith(articlePrefix) && /\.js$/i.test(entryPath)) {
+        const jsPath = entryPath.slice(articlePrefix.length);
+        if (!jsPath.startsWith(HIDDEN_ARTICLE_DIR)) return;
+        const slug = resolveArticleSlugFromScriptPath(jsPath);
+        hiddenScripts.set(slug, {
+          slug,
+          jsPath,
+          jsUrl: buildSiteUrl('articles/' + jsPath)
+        });
+        return;
+      }
+      if (entryPath.startsWith(algorithmPrefix) && /\.js$/i.test(entryPath) && !/\.worker\.js$/i.test(entryPath)) {
+        algorithms.add(entryPath.slice(algorithmPrefix.length));
+      }
+    });
+
+    return {
+      articles: Array.from(articles.values()),
+      hiddenScripts: Array.from(hiddenScripts.values()),
+      algorithms: Array.from(algorithms).sort()
+    };
+  } catch (error) {
+    return { articles: [], hiddenScripts: [], algorithms: [] };
+  }
+}
+
+async function discoverArticleEntries() {
+  const local = await discoverArticleEntriesFromDirectory();
+  if (local.articles.length || local.hiddenScripts.length) return local;
+  const remote = await discoverSiteEntriesFromGitHub();
+  return {
+    articles: remote.articles,
+    hiddenScripts: remote.hiddenScripts
+  };
+}
+
+async function discoverAlgorithmEntries() {
+  const local = await discoverAlgorithmEntriesFromDirectory();
+  if (local.length) return local;
+  const remote = await discoverSiteEntriesFromGitHub();
+  return remote.algorithms || [];
+}
+
+async function discoverFeatureEntriesFromDirectory() {
+  const rootPath = getSiteRootPath() + '/assets/features/';
+  const visitedDirs = new Set();
+  const discoveredScripts = new Set();
+
+  async function visit(dirUrl) {
+    const absoluteDirUrl = new URL(dirUrl, window.location.href).toString();
+    if (visitedDirs.has(absoluteDirUrl)) return;
+    visitedDirs.add(absoluteDirUrl);
+
+    const response = await fetch(absoluteDirUrl, { cache: 'no-store' });
+    if (!response.ok) throw new Error('Failed to read features directory: ' + absoluteDirUrl);
+    const html = await response.text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    const nestedVisits = [];
+
+    Array.from(doc.querySelectorAll('a')).forEach((link) => {
+      const href = link.getAttribute('href') || '';
+      if (!href || href === '../') return;
+      const resolvedUrl = new URL(href, absoluteDirUrl);
+      if (!resolvedUrl.pathname.startsWith(rootPath)) return;
+
+      if (/\.js$/i.test(resolvedUrl.pathname) && !/\.worker\.js$/i.test(resolvedUrl.pathname)) {
+        const scriptPath = decodeURIComponent(resolvedUrl.pathname.slice(rootPath.length));
+        if (scriptPath) discoveredScripts.add(scriptPath);
+        return;
+      }
+
+      if (resolvedUrl.pathname.endsWith('/')) nestedVisits.push(visit(resolvedUrl.toString()));
+    });
+
+    await Promise.all(nestedVisits);
+  }
+
+  try {
+    await visit(buildSiteUrl('assets/features/'));
+    return Array.from(discoveredScripts).sort();
+  } catch (error) {
+    return [];
+  }
+}
+
+async function discoverFeatureEntries() {
+  const local = await discoverFeatureEntriesFromDirectory();
+  if (local.length) return local;
+  const docsPrefix = normalizeArticleMdPath(SITE_GITHUB_SOURCE.docsDir) + '/assets/features/';
+  const tree = await fetchGitHubTree().catch(() => []);
+  return tree
+    .filter((entry) => entry && entry.type === 'blob' && entry.path && entry.path.startsWith(docsPrefix) && /\.js$/i.test(entry.path) && !/\.worker\.js$/i.test(entry.path))
+    .map((entry) => entry.path.slice(docsPrefix.length))
+    .sort();
+}
+
 async function loadRuntimeArticles() {
-  const manifestMap = new Map((window.__SITE_DATA__.articles || []).map((article) => [article.slug, {
-    slug: article.slug,
-    section: article.section,
-    mdPath: article.mdPath,
-    mdUrl: buildSiteUrl('articles/' + article.mdPath),
-    jsPath: article.jsPath || '',
-    jsUrl: article.jsPath ? buildSiteUrl('articles/' + article.jsPath) : ''
-  }]));
+  const manifestMap = new Map();
   const discoveredResources = await discoverArticleEntries();
   discoveredResources.articles.forEach((entry) => {
-    const previous = manifestMap.get(entry.slug);
     manifestMap.set(entry.slug, {
       slug: entry.slug,
-      section: previous && previous.section ? previous.section : (isHiddenArticleEntry(entry) ? 'hidden' : 'article'),
+      section: entry.section || (isHiddenArticleEntry(entry) ? 'hidden' : 'article'),
       mdPath: entry.mdPath,
-      mdUrl: entry.mdUrl,
-      jsPath: previous && previous.jsPath ? previous.jsPath : '',
-      jsUrl: previous && previous.jsUrl ? previous.jsUrl : ''
+      mdUrl: entry.mdUrl || buildSiteUrl('articles/' + entry.mdPath),
+      jsPath: '',
+      jsUrl: ''
     });
   });
   discoveredResources.hiddenScripts.forEach((script) => {
@@ -722,10 +870,18 @@ async function loadRuntimeArticles() {
         jsUrl: matched && matched.jsUrl ? matched.jsUrl : ''
       };
     });
+  rebuildRuntimeLinkMap(loaded.map((item) => {
+    const matched = manifestMap.get(item.slug);
+    return {
+      slug: item.slug,
+      mdPath: matched && matched.mdPath ? matched.mdPath : item.slug + '.md'
+    };
+  }));
 
   return {
     homeSlots,
     hiddenArticles,
+    hiddenScripts: discoveredResources.hiddenScripts.slice(),
     articles: loaded.filter((item) => !hiddenSlugs.has(item.slug) && item.section !== 'hidden')
   };
 }
@@ -738,28 +894,7 @@ function initHomeSlots(runtimeData) {
 
     node.dataset.articleOpen = article.slug;
     node.classList.add('is-ready');
-
-    if (slug === 'hero') {
-      const titleNode = node.querySelector('h1');
-      const metaNode = node.querySelector('.hero-copy-meta');
-      const summaryNode = node.querySelector('.hero-lead');
-      if (titleNode) titleNode.textContent = article.title;
-      if (metaNode) {
-        const metaText = formatArticleMeta(article);
-        metaNode.textContent = metaText;
-        metaNode.hidden = !metaText;
-      }
-      if (summaryNode) summaryNode.textContent = article.summary || article.bodyText || '';
-    } else if (slug === 'lovestory1') {
-      mountLiveDuration(node);
-    } else if (slug === 'midline') {
-      const textNode = node.querySelector('p');
-      if (textNode) textNode.textContent = '- ' + article.title + ' -';
-    } else if (slug === 'footer') {
-      node.textContent = '- ' + article.title + ' -';
-    } else {
-      node.textContent = article.title;
-    }
+    emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.homeSlotListeners, { slug, article, node });
   });
 }
 
@@ -772,48 +907,15 @@ function initArticleModal(runtimeData) {
   const summary = document.getElementById('article-modal-summary');
   const body = document.getElementById('article-modal-body');
   const close = document.getElementById('article-modal-close');
-  if (!modal || !title || !meta || !side || !time || !summary || !body || !close) return;
-
-  const articleMap = new Map(runtimeData.homeSlots.concat(runtimeData.articles, runtimeData.hiddenArticles || []).map((article) => [article.slug, article]));
-  let currentArticleSlug = '';
-  let modalTitleAction = null;
-  const articleOpenListeners = [];
-  const articleCloseListeners = [];
-  const keydownListeners = [];
-  const hiddenTriggerFactories = [];
-
-  function applyModalTitleAction(action) {
-    modalTitleAction = action || null;
-    const enabled = !!modalTitleAction;
-    title.classList.toggle('is-secret-trigger', enabled);
-    title.tabIndex = enabled ? 0 : -1;
-    if (enabled) {
-      title.setAttribute('role', 'button');
-      title.setAttribute('aria-label', modalTitleAction.ariaLabel || title.textContent);
-    } else {
-      title.removeAttribute('role');
-      title.removeAttribute('aria-label');
-    }
-  }
-
-  function addHiddenListener(store, handler) {
-    if (typeof handler !== 'function') return function noop() {};
-    store.push(handler);
-    return () => {
-      const index = store.indexOf(handler);
-      if (index >= 0) store.splice(index, 1);
+  if (!modal || !title || !meta || !side || !time || !summary || !body || !close) {
+    return {
+      openArticle() {},
+      closeArticle() {}
     };
   }
 
-  function emitHiddenListeners(store, payload) {
-    store.slice().forEach((handler) => {
-      try {
-        handler(payload);
-      } catch (error) {
-        console.warn('[hidden-trigger] listener failed:', error);
-      }
-    });
-  }
+  const articleMap = new Map(runtimeData.homeSlots.concat(runtimeData.articles, runtimeData.hiddenArticles || []).map((article) => [article.slug, article]));
+  let currentArticleSlug = '';
 
   function createArticleOpenPayload(article) {
     return {
@@ -822,88 +924,14 @@ function initArticleModal(runtimeData) {
       openArticle,
       open(slug) {
         openArticle(slug);
-      },
-      setTitleAction(config) {
-        if (!config || currentArticleSlug !== article.slug) return;
-        applyModalTitleAction({
-          ariaLabel: config.ariaLabel || article.title,
-          activate: typeof config.activate === 'function'
-            ? config.activate
-            : () => {
-                if (config.targetSlug) openArticle(config.targetSlug);
-              }
-        });
-      },
-      clearTitleAction() {
-        if (currentArticleSlug === article.slug) applyModalTitleAction(null);
       }
     };
-  }
-
-  function createHiddenTriggerApi(article) {
-    return {
-      slug: article.slug,
-      article,
-      open() {
-        openArticle(article.slug);
-      },
-      openArticle,
-      onArticleOpen(handler) {
-        return addHiddenListener(articleOpenListeners, handler);
-      },
-      onArticleClose(handler) {
-        return addHiddenListener(articleCloseListeners, handler);
-      },
-      onKeydown(handler) {
-        return addHiddenListener(keydownListeners, handler);
-      }
-    };
-  }
-
-  function loadHiddenTriggerScript(article) {
-    if (!article || !article.jsUrl) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      const scriptUrl = new URL(article.jsUrl, window.location.href);
-      scriptUrl.searchParams.set('_', String(Date.now()));
-      script.src = scriptUrl.toString();
-      script.async = false;
-      script.dataset.hiddenSlug = article.slug;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Failed to load hidden trigger script: ' + article.jsUrl));
-      document.head.appendChild(script);
-    });
-  }
-
-  async function initHiddenTriggerScripts() {
-    window.__registerHiddenArticleTrigger = function registerHiddenArticleTrigger(factory) {
-      const currentScript = document.currentScript;
-      const slug = currentScript && currentScript.dataset ? currentScript.dataset.hiddenSlug || '' : '';
-      if (!slug || typeof factory !== 'function') return;
-      hiddenTriggerFactories.push({ slug, factory });
-    };
-
-    const hiddenWithScripts = (runtimeData.hiddenArticles || []).filter((article) => article.jsUrl);
-    for (const article of hiddenWithScripts) {
-      await loadHiddenTriggerScript(article);
-    }
-
-    hiddenTriggerFactories.forEach(({ slug, factory }) => {
-      const article = articleMap.get(slug);
-      if (!article) return;
-      try {
-        factory(createHiddenTriggerApi(article));
-      } catch (error) {
-        console.warn('[hidden-trigger] setup failed:', slug, error);
-      }
-    });
   }
 
   function openArticle(slug) {
     const article = articleMap.get(slug);
     if (!article) return;
     currentArticleSlug = slug;
-    applyModalTitleAction(null);
     title.textContent = article.title;
     meta.textContent = formatModalMeta(article);
     meta.hidden = !meta.textContent;
@@ -922,7 +950,7 @@ function initArticleModal(runtimeData) {
     requestAnimationFrame(() => {
       modal.scrollTop = 0;
     });
-    emitHiddenListeners(articleOpenListeners, createArticleOpenPayload(article));
+    emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.articleOpenListeners, createArticleOpenPayload(article));
   }
 
   function closeArticle() {
@@ -932,8 +960,7 @@ function initArticleModal(runtimeData) {
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('has-modal-open');
     currentArticleSlug = '';
-    applyModalTitleAction(null);
-    if (closedSlug) emitHiddenListeners(articleCloseListeners, { slug: closedSlug, article: closedArticle, openArticle });
+    if (closedSlug) emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.articleCloseListeners, { slug: closedSlug, article: closedArticle, openArticle });
   }
 
   document.addEventListener('click', (event) => {
@@ -950,19 +977,9 @@ function initArticleModal(runtimeData) {
   });
 
   close.addEventListener('click', closeArticle);
-  title.addEventListener('click', () => {
-    if (!modalTitleAction || typeof modalTitleAction.activate !== 'function') return;
-    modalTitleAction.activate();
-  });
-  title.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    if (!modalTitleAction || typeof modalTitleAction.activate !== 'function') return;
-    event.preventDefault();
-    modalTitleAction.activate();
-  });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') closeArticle();
-    emitHiddenListeners(keydownListeners, {
+    emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.keydownListeners, {
       event,
       key: event.key,
       normalizedKey: String(event.key || '').length === 1 ? String(event.key).toLowerCase() : String(event.key || ''),
@@ -970,9 +987,10 @@ function initArticleModal(runtimeData) {
     });
   });
 
-  initHiddenTriggerScripts().catch((error) => {
-    console.warn('[hidden-trigger] bootstrap failed:', error);
-  });
+  return {
+    openArticle,
+    closeArticle
+  };
 }
 
 function initHomeDirectory(runtimeData) {
@@ -982,149 +1000,89 @@ function initHomeDirectory(runtimeData) {
 
   let activeSection = 'all';
   const articles = runtimeData.articles;
-  const categories = Array.from(new Set(articles.map((article) => getArticleCategory(article))));
-  const filterItems = [{ key: 'all', label: '全部文章', description: '共 ' + articles.length + ' 篇' }].concat(
-    categories.map((category) => ({
-      key: category,
-      label: category,
-      description: articles.filter((article) => getArticleCategory(article) === category).length + ' 篇'
-    }))
-  );
-  let lastScrollY = window.scrollY;
-  let spacerResetLocked = false;
-  let spacerResetTimer = null;
-  let correctionTimers = [];
-  let directoryAutoScrollActive = false;
+  const hiddenDirectoryArticles = (runtimeData.hiddenArticles || []).map((article) => ({
+    ...article,
+    __directoryCategory: '隐藏'
+  }));
+  let allFilterClickCount = 0;
+  let hiddenUnlocked = false;
 
-  function getScrollSpacer() {
-    return document.getElementById('directory-scroll-spacer');
+  function getDirectoryCategory(article) {
+    if (article && article.__directoryCategory) return article.__directoryCategory;
+    return getArticleCategory(article);
   }
 
-  function clearScrollSpacer() {
-    const spacer = getScrollSpacer();
-    if (spacer) spacer.style.height = '0px';
+  function getVisibleArticles() {
+    return hiddenUnlocked ? articles.concat(hiddenDirectoryArticles) : articles;
   }
 
-  function lockSpacerReset() {
-    spacerResetLocked = true;
-    if (spacerResetTimer) window.clearTimeout(spacerResetTimer);
-    spacerResetTimer = window.setTimeout(() => {
-      spacerResetLocked = false;
-      spacerResetTimer = null;
-    }, 500);
+  function getFilterItems() {
+    const visibleArticles = getVisibleArticles();
+    const categories = Array.from(new Set(visibleArticles.map((article) => getDirectoryCategory(article))));
+    return [{ key: 'all', label: '全部文章', description: '共 ' + visibleArticles.length + ' 篇' }].concat(
+      categories.map((category) => ({
+        key: category,
+        label: category,
+        description: visibleArticles.filter((article) => getDirectoryCategory(article) === category).length + ' 篇'
+      }))
+    );
   }
 
-  function cancelPendingDirectoryAutoScroll() {
-    correctionTimers.forEach((timerId) => window.clearTimeout(timerId));
-    correctionTimers = [];
-    directoryAutoScrollActive = false;
-  }
+  setHiddenDirectoryController({
+    unlock() {
+      if (hiddenUnlocked) return false;
+      hiddenUnlocked = true;
+      return true;
+    },
+    isUnlocked() {
+      return hiddenUnlocked;
+    }
+  });
 
-  function getScrollOffset() {
-    const header = document.getElementById('site-header-root');
-    const headerHeight = header ? header.offsetHeight : 0;
-    return headerHeight + 20;
-  }
+  function renderFilters() {
+    const filterItems = getFilterItems();
+    const availableKeys = new Set(filterItems.map((item) => item.key));
+    if (!availableKeys.has(activeSection)) activeSection = 'all';
 
-  function getDirectoryTarget() {
-    return document.querySelector('.directory-layout');
-  }
+    filterContainer.innerHTML = filterItems.map((item) => {
+      return [
+        '<a class="filter-button' + (item.key === activeSection ? ' is-active' : '') + '" href="#directory-title" data-filter="' + escapeHtml(item.key) + '">',
+        '  <span>' + item.label + '</span>',
+        '  <small>' + item.description + '</small>',
+        '</a>'
+      ].join('');
+    }).join('');
 
-  function getSidebarTarget() {
-    return document.querySelector('.directory-sidebar');
-  }
-
-  function alignDirectoryIntoView(behavior, useSidebarTarget) {
-    syncHeaderState();
-    syncLayoutMetrics();
-    const target = useSidebarTarget ? getSidebarTarget() || getDirectoryTarget() : getDirectoryTarget();
-    if (!target) return;
-    const desiredTop = Math.max(target.getBoundingClientRect().top + window.scrollY - getScrollOffset(), 0);
-    const spacer = getScrollSpacer();
-    const currentSpacerHeight = spacer ? spacer.offsetHeight : 0;
-    const baseScrollHeight = document.documentElement.scrollHeight - currentSpacerHeight;
-    const maxScrollTop = Math.max(baseScrollHeight - window.innerHeight, 0);
-    const requiredExtraSpace = Math.max(0, desiredTop - maxScrollTop);
-    if (spacer) spacer.style.height = requiredExtraSpace > 0 ? requiredExtraSpace + 'px' : '0px';
-    window.scrollTo({ top: desiredTop, behavior });
-  }
-
-  function scrollDirectoryIntoView() {
-    const target = getDirectoryTarget();
-    if (!target) return;
-    cancelPendingDirectoryAutoScroll();
-    directoryAutoScrollActive = true;
-    lockSpacerReset();
-    requestAnimationFrame(() => {
-      alignDirectoryIntoView('smooth', false);
-      correctionTimers = [220, 420, 680].map((delay) =>
-        window.setTimeout(() => {
-          if (!directoryAutoScrollActive) return;
-          lockSpacerReset();
-          alignDirectoryIntoView('auto', true);
-        }, delay)
-      );
-      const releaseTimer = window.setTimeout(() => {
-        directoryAutoScrollActive = false;
-        correctionTimers = correctionTimers.filter((timerId) => timerId !== releaseTimer);
-      }, 760);
-      correctionTimers.push(releaseTimer);
+    filterContainer.querySelectorAll('[data-filter]').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const filterKey = link.dataset.filter;
+        if (filterKey === 'all' && !hiddenUnlocked) allFilterClickCount += 1;
+        emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.directoryFilterListeners, {
+          event,
+          key: filterKey,
+          label: link.textContent || '',
+          count: filterKey === 'all' ? allFilterClickCount : 0,
+          activeSection,
+          unlockHiddenDirectory: unlockHiddenDirectoryFromBridge,
+          isHiddenDirectoryUnlocked: isHiddenDirectoryUnlockedFromBridge
+        });
+        activeSection = filterKey;
+        renderFilters();
+        render();
+      });
     });
   }
 
   function render() {
-    const filtered = articles
-      .filter((article) => (activeSection === 'all' ? true : getArticleCategory(article) === activeSection))
+    const filtered = getVisibleArticles()
+      .filter((article) => (activeSection === 'all' ? true : getDirectoryCategory(article) === activeSection))
       .slice()
       .sort(compareArticlesByDisplayOrder);
 
     directory.innerHTML = filtered.map(buildCard).join('');
   }
-
-  filterContainer.innerHTML = filterItems.map((item) => {
-    return [
-      '<a class="filter-button' + (item.key === activeSection ? ' is-active' : '') + '" href="#directory-title" data-filter="' + escapeHtml(item.key) + '">',
-      '  <span>' + item.label + '</span>',
-      '  <small>' + item.description + '</small>',
-      '</a>'
-    ].join('');
-  }).join('');
-
-  filterContainer.querySelectorAll('[data-filter]').forEach((link) => {
-    link.addEventListener('click', (event) => {
-      event.preventDefault();
-      activeSection = link.dataset.filter;
-      filterContainer.querySelectorAll('[data-filter]').forEach((node) => node.classList.toggle('is-active', node === link));
-      render();
-      scrollDirectoryIntoView();
-    });
-  });
-
-  window.addEventListener(
-    'scroll',
-    () => {
-      if (!spacerResetLocked && window.scrollY < lastScrollY - 4) clearScrollSpacer();
-      lastScrollY = window.scrollY;
-    },
-    { passive: true }
-  );
-
-  ['wheel', 'touchstart'].forEach((eventName) => {
-    window.addEventListener(
-      eventName,
-      () => {
-        cancelPendingDirectoryAutoScroll();
-      },
-      { passive: true }
-    );
-  });
-
-  window.addEventListener('keydown', (event) => {
-    if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar'].includes(event.key)) {
-      cancelPendingDirectoryAutoScroll();
-    }
-  });
-
+  renderFilters();
   render();
 }
 
@@ -1202,11 +1160,119 @@ function loadAlgorithmScript(scriptPath) {
 
 async function loadAlgorithmScripts() {
   ensureAlgorithmRegistry();
-  const algorithms = Array.isArray(window.__SITE_DATA__.algorithms) ? window.__SITE_DATA__.algorithms : [];
-  for (const entry of algorithms) {
-    await loadAlgorithmScript(entry && entry.scriptPath);
+  const algorithms = await discoverAlgorithmEntries();
+  for (const scriptPath of algorithms) {
+    await loadAlgorithmScript(scriptPath);
   }
   return window.__ALGORITHM_VISUALIZERS__;
+}
+
+function ensureSiteFeatureRegistry() {
+  if (!Array.isArray(window.__SITE_RUNTIME_FEATURES__)) {
+    window.__SITE_RUNTIME_FEATURES__ = [];
+  }
+
+  window.__registerSiteFeature = (factory) => {
+    if (typeof factory !== 'function') return;
+    window.__SITE_RUNTIME_FEATURES__.push(factory);
+  };
+
+  return window.__SITE_RUNTIME_FEATURES__;
+}
+
+function loadFeatureScript(scriptPath) {
+  return new Promise((resolve, reject) => {
+    if (!scriptPath) {
+      resolve();
+      return;
+    }
+
+    const normalizedPath = String(scriptPath).replace(/^\/+/, '');
+    const existing = document.querySelector('script[data-feature-path="' + normalizedPath + '"]');
+    if (existing) {
+      if (existing.dataset.loaded === 'true') {
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('功能脚本加载失败：' + normalizedPath)), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.async = false;
+    script.dataset.featurePath = normalizedPath;
+    const scriptUrl = new URL(buildSiteUrl('assets/features/' + normalizedPath), window.location.href);
+    scriptUrl.searchParams.set('_', String(Date.now()));
+    script.src = scriptUrl.toString();
+    script.onload = () => {
+      script.dataset.loaded = 'true';
+      resolve();
+    };
+    script.onerror = () => reject(new Error('功能脚本加载失败：' + normalizedPath));
+    document.head.appendChild(script);
+  });
+}
+
+async function loadFeatureScripts() {
+  ensureSiteFeatureRegistry();
+  const features = await discoverFeatureEntries();
+  for (const scriptPath of features) {
+    await loadFeatureScript(scriptPath);
+  }
+  return window.__SITE_RUNTIME_FEATURES__;
+}
+
+function createSiteFeatureApi(runtimeData, controls) {
+  const articleMap = new Map(runtimeData.homeSlots.concat(runtimeData.articles, runtimeData.hiddenArticles || []).map((article) => [article.slug, article]));
+  return {
+    runtimeData,
+    getArticle(slug) {
+      return articleMap.get(slug) || null;
+    },
+    openArticle(slug) {
+      if (controls && typeof controls.openArticle === 'function') controls.openArticle(slug);
+    },
+    closeArticle() {
+      if (controls && typeof controls.closeArticle === 'function') controls.closeArticle();
+    },
+    onHomeSlotReady(handler) {
+      return addHiddenRuntimeListener(HIDDEN_RUNTIME_BRIDGE.homeSlotListeners, handler);
+    },
+    onAppReady(handler) {
+      return addHiddenRuntimeListener(HIDDEN_RUNTIME_BRIDGE.appReadyListeners, handler);
+    },
+    onArticleOpen(handler) {
+      return addHiddenRuntimeListener(HIDDEN_RUNTIME_BRIDGE.articleOpenListeners, handler);
+    },
+    onArticleClose(handler) {
+      return addHiddenRuntimeListener(HIDDEN_RUNTIME_BRIDGE.articleCloseListeners, handler);
+    },
+    onKeydown(handler) {
+      return addHiddenRuntimeListener(HIDDEN_RUNTIME_BRIDGE.keydownListeners, handler);
+    },
+    onDirectoryFilterClick(handler) {
+      return addHiddenRuntimeListener(HIDDEN_RUNTIME_BRIDGE.directoryFilterListeners, handler);
+    },
+    unlockHiddenDirectory() {
+      return unlockHiddenDirectoryFromBridge();
+    },
+    isHiddenDirectoryUnlocked() {
+      return isHiddenDirectoryUnlockedFromBridge();
+    }
+  };
+}
+
+function initSiteFeatures(runtimeData, controls) {
+  const factories = ensureSiteFeatureRegistry();
+  const api = createSiteFeatureApi(runtimeData, controls);
+  factories.forEach((factory) => {
+    try {
+      factory(api);
+    } catch (error) {
+      console.warn('[site-feature] setup failed:', error);
+    }
+  });
 }
 
 function syncLayoutMetrics() {
@@ -1214,18 +1280,6 @@ function syncLayoutMetrics() {
   const root = document.documentElement;
   if (!root) return;
   root.style.setProperty('--header-height', (header ? header.offsetHeight : 0) + 'px');
-}
-
-function syncHeaderState() {
-  const header = document.getElementById('site-header-root');
-  if (!header) return;
-  const wasCondensed = header.classList.contains('is-condensed');
-  const expandThreshold = 4;
-  const condenseThreshold = 72;
-  const condensed = wasCondensed ? window.scrollY > expandThreshold : window.scrollY > condenseThreshold;
-  const changed = header.classList.contains('is-condensed') !== condensed;
-  header.classList.toggle('is-condensed', condensed);
-  if (changed) syncLayoutMetrics();
 }
 
 function showRuntimeLoadError(error) {
@@ -1237,19 +1291,21 @@ function showRuntimeLoadError(error) {
 
 document.addEventListener('DOMContentLoaded', async () => {
   syncLayoutMetrics();
-  syncHeaderState();
   await loadAlgorithmScripts();
+  await loadFeatureScripts();
   initAlgorithms();
-  window.addEventListener('resize', () => {
-    syncHeaderState();
-    syncLayoutMetrics();
-  });
-  window.addEventListener('scroll', syncHeaderState, { passive: true });
+  window.addEventListener('resize', syncLayoutMetrics);
   try {
     const runtimeData = await loadRuntimeArticles();
-    initHomeSlots(runtimeData);
-    initArticleModal(runtimeData);
+    const modalControls = initArticleModal(runtimeData);
     initHomeDirectory(runtimeData);
+    initSiteFeatures(runtimeData, modalControls);
+    initHomeSlots(runtimeData);
+    emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.appReadyListeners, {
+      runtimeData,
+      openArticle: modalControls.openArticle,
+      closeArticle: modalControls.closeArticle
+    });
   } catch (error) {
     console.error(error);
     showRuntimeLoadError(error);

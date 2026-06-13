@@ -25,12 +25,10 @@ class PathPlanner {
         this.floatTime = 0;
         this.floatOffset = [];
         this.handleResize = () => this.resizeCanvas();
-
         this.resizeCanvas();
         
         // 初始化3个随机障碍物，在l=-2~+2附近，且s值不要太近
         this.obstacles = [];
-        const centerY = this.height / 2;
         
         // 确保障碍物之间的最小距离（以像素为单位）
         const minDistance = this.obstacleSize * 2; // 至少两倍障碍物宽度
@@ -154,6 +152,7 @@ class PathPlanner {
             this.mousePos.x *= scaleX;
             this.mousePos.y *= scaleY;
         }
+
         this.updatePath();
     }
 
@@ -222,7 +221,7 @@ class PathPlanner {
             height: obstacle.height
         };
     }
-    
+
     setupEventListeners() {
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
@@ -275,7 +274,7 @@ class PathPlanner {
         }
     }
     
-    handleMouseUp(e) {
+    handleMouseUp() {
         // 停止所有障碍物的拖动
         for (let i = 0; i < this.obstacles.length; i++) {
             this.obstacles[i].dragging = false;
@@ -337,75 +336,61 @@ class PathPlanner {
         return point.x >= rect.x && point.x <= rect.x + rect.width &&
                point.y >= rect.y && point.y <= rect.y + rect.height;
     }
-    
-    getBounds(s) {
-        const centerY = this.height / 2;
 
-        return { upperBound: 0, lowerBound: this.height, centerY };
-    }
-    
-    generateGrid() {
-        const grid = [];
-        
-        // 生成网格
-        for (let x = this.padding; x < this.width - this.padding; x += this.gridSize) {
-            const { upperBound, lowerBound } = this.getBounds(x);
-            for (let y = upperBound; y < lowerBound; y += this.gridSize) {
-                grid.push({ x, y });
-            }
-        }
-        
-        return grid;
+    getBounds() {
+        return { upperBound: 0, lowerBound: this.height };
     }
     
     dynamicProgramming() {
-        const path = [];
-        
-        // 确保路径从0,0开始
-        const startX = 0;
-        
-        // 生成网格
         const grid = this.generateGrid();
-        
-        // 初始化动态规划表
+        if (!grid.length || !grid[0].length) return [];
+
         const dp = [];
         const prev = [];
-        
-        for (let x = 0; x < grid.length; x++) {
+
+        for (let x = 0; x < grid.length; x += 1) {
             dp[x] = [];
             prev[x] = [];
-            for (let y = 0; y < grid[x].length; y++) {
+            for (let y = 0; y < grid[x].length; y += 1) {
                 dp[x][y] = Infinity;
                 prev[x][y] = null;
             }
         }
-        
-        // 找到起点在网格中的位置
-        const startY = Math.floor(grid[0].length / 2);
-        dp[0][startY] = 0;
-        
-        // 动态规划
-        for (let x = 0; x < grid.length - 1; x++) {
-            for (let y = 0; y < grid[x].length; y++) {
+
+        const maxRow = grid[0].length - 1;
+        const startCandidates = [];
+        const endCandidates = [];
+
+        for (let row = 0; row <= maxRow; row += 1) {
+            if (grid[0][row].passable) startCandidates.push(row);
+            if (grid[grid.length - 1][row].passable) endCandidates.push(row);
+        }
+
+        if (!startCandidates.length || !endCandidates.length) return [];
+
+        startCandidates.forEach((candidateRow) => {
+            dp[0][candidateRow] = 0;
+        });
+
+        for (let x = 0; x < grid.length - 1; x += 1) {
+            for (let y = 0; y < grid[x].length; y += 1) {
                 if (dp[x][y] === Infinity) continue;
-                
-                // 检查当前网格是否被障碍物占据
                 if (!grid[x][y].passable) continue;
-                
-                // 尝试所有可能的下一步（上下左右，以及对角线）
-                for (let dy = -2; dy <= 2; dy++) {
+
+                for (let dy = -2; dy <= 2; dy += 1) {
                     const newY = y + dy;
                     if (newY < 0 || newY >= grid[x + 1].length) continue;
-                    
-                    // 检查目标网格是否被障碍物占据
                     if (!grid[x + 1][newY].passable) continue;
-                    
-                    // 计算成本：距离中心线的距离 + 路径平滑度
-                    const centerY = Math.floor(grid[x + 1].length / 2);
-                    const distanceCost = Math.abs(newY - centerY) * 0.5; // 增加吸引中心线的权重
-                    const smoothnessCost = Math.abs(dy) * 1;
-                    const totalCost = dp[x][y] + distanceCost + smoothnessCost;
-                    
+
+                    const stepCost = Math.hypot(1, dy);
+                    const steeringCost = Math.abs(dy) * 0.2;
+                    const edgeBias = (
+                        Math.min(newY, maxRow - newY) <= 1
+                            ? 0.35
+                            : 0
+                    );
+                    const totalCost = dp[x][y] + stepCost + steeringCost + edgeBias;
+
                     if (totalCost < dp[x + 1][newY]) {
                         dp[x + 1][newY] = totalCost;
                         prev[x + 1][newY] = y;
@@ -413,52 +398,51 @@ class PathPlanner {
                 }
             }
         }
-        
-        // 回溯找到路径
-        let currentY = startY;
-        for (let x = grid.length - 1; x >= 0; x--) {
-            if (x < grid.length - 1) {
-                currentY = prev[x + 1][currentY];
+
+        let bestEndRow = endCandidates[0];
+        let bestCost = Infinity;
+        endCandidates.forEach((candidateRow) => {
+            if (dp[grid.length - 1][candidateRow] < bestCost) {
+                bestCost = dp[grid.length - 1][candidateRow];
+                bestEndRow = candidateRow;
             }
-            
-            // 转换网格坐标到像素坐标
-            const pixelX = startX + x * this.gridSize;
-            const { upperBound, lowerBound } = this.getBounds(pixelX);
+        });
+
+        if (!Number.isFinite(bestCost)) return [];
+
+        const path = [];
+        let currentY = bestEndRow;
+        for (let x = grid.length - 1; x >= 0; x -= 1) {
+            const pixelX = x * this.gridSize;
+            const { upperBound } = this.getBounds(pixelX);
             const pixelY = upperBound + currentY * this.gridSize;
-            
             path.unshift({ x: pixelX, y: pixelY });
+            if (x > 0) currentY = prev[x][currentY];
+            if (currentY === null || currentY === undefined) return [];
         }
-        
-        // 使用改进的平滑算法生成更平滑的曲线
-        return this.smoothPath(path);
+
+        const smoothed = this.smoothPath(path);
+        if (smoothed.length) {
+            smoothed[0] = { x: 0, y: smoothed[0].y };
+            smoothed[smoothed.length - 1] = { x: this.width, y: smoothed[smoothed.length - 1].y };
+        }
+        return smoothed;
     }
     
     generateGrid() {
         const grid = [];
-        
-        // 确保路径从0,0开始
-        const startX = 0;
-        
-        // 确保网格的范围包括s=smax的地方
-        for (let x = startX; x <= this.width; x += this.gridSize) {
+
+        for (let x = 0; x <= this.width; x += this.gridSize) {
             const row = [];
             const { upperBound, lowerBound } = this.getBounds(x);
-            
-            // 计算当前x处的网格行数
             const numRows = Math.floor((lowerBound - upperBound) / this.gridSize) + 1;
-            
-            for (let y = 0; y < numRows; y++) {
-                // 转换网格坐标到像素坐标
+
+            for (let y = 0; y < numRows; y += 1) {
                 const pixelY = upperBound + y * this.gridSize;
                 const pixelX = x;
-                
-                // 检查是否被障碍物占据（包括额外的1米空间）
                 let passable = true;
-                for (let j = 0; j < this.obstacles.length; j++) {
-                    // 获取考虑浮动后的障碍物位置
+                for (let j = 0; j < this.obstacles.length; j += 1) {
                     const obstacle = this.getObstaclePosition(j);
-                    
-                    // 创建包含额外空间的扩展障碍物边界
                     const extendedObstacle = {
                         x: obstacle.x - this.obstacleOccupancyMargin,
                         y: obstacle.y - this.obstacleOccupancyMargin,
@@ -474,10 +458,8 @@ class PathPlanner {
                 
                 row.push({ passable });
             }
-            
             grid.push(row);
         }
-        
         return grid;
     }
     
@@ -539,10 +521,15 @@ class PathPlanner {
         smoothedPath.push(firstPass[firstPass.length - 1]);
         
         // 最后再次检查所有点是否在边界内
-        for (let i = 0; i < smoothedPath.length; i++) {
+        for (let i = 0; i < smoothedPath.length; i += 1) {
             const { x, y } = smoothedPath[i];
             const { upperBound, lowerBound } = this.getBounds(x);
             smoothedPath[i].y = Math.max(upperBound, Math.min(lowerBound, y));
+        }
+
+        if (smoothedPath.length) {
+            smoothedPath[0] = { x: 0, y: smoothedPath[0].y };
+            smoothedPath[smoothedPath.length - 1] = { x: this.width, y: smoothedPath[smoothedPath.length - 1].y };
         }
         
         return smoothedPath;
@@ -560,14 +547,14 @@ class PathPlanner {
     }
     
     getPlanningFrame() {
-        const { upperBound, lowerBound, centerY } = this.getBounds(0);
+        const { upperBound, lowerBound } = this.getBounds(0);
         const endX = Math.floor(this.width / this.gridSize) * this.gridSize;
         return {
             startX: 0,
             endX,
             upperBound,
             lowerBound,
-            centerY
+            centerY: (upperBound + lowerBound) / 2
         };
     }
 
@@ -662,7 +649,7 @@ class PathPlanner {
             this.ctx.fill();
         }
     }
-    
+
     drawEgoVehicle() {
         const carX = this.padding;
         const carY = this.height / 2 - this.carWidth / 2;

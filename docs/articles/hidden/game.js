@@ -1,17 +1,10 @@
 window.__registerHiddenArticleTrigger?.(({ onKeydown, open }) => {
-  const sequence = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
-  const buffer = [];
+  const utils = window.__hiddenFeatureUtils__;
+  if (!utils || typeof utils.bindKeySequence !== 'function') return;
 
-  onKeydown(({ normalizedKey }) => {
-    if (!normalizedKey) return;
-    buffer.push(normalizedKey);
-    if (buffer.length > sequence.length) buffer.shift();
-    if (buffer.length < sequence.length) return;
-
-    const matched = sequence.every((key, index) => buffer[buffer.length - sequence.length + index] === key);
-    if (!matched) return;
-
-    buffer.length = 0;
-    open();
-  });
+  utils.bindKeySequence(
+    onKeydown,
+    ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'],
+    open
+  );
 });

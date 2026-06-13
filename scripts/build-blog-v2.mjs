@@ -11,6 +11,12 @@ const HOME_SLOT_SLUGS = ['hero', 'lovestory1', 'lovestory2', 'lovestory3', 'midl
 const LOVE_TIMER_START = '2013-05-08T00:00:00+08:00';
 const HIDDEN_ARTICLE_DIR = 'hidden/';
 
+if (!process.env.ALLOW_LEGACY_BLOG_BUILD) {
+  console.log('[build-blog-v2] 已停用。当前站点以 docs/ 下的 index.html、assets/js/site.js、assets/css/style.css 为真实源码，不再需要常规构建。');
+  console.log('[build-blog-v2] 如确实要运行旧构建流程，请显式设置 ALLOW_LEGACY_BLOG_BUILD=1。');
+  process.exit(0);
+}
+
 function toPosixPath(input) {
   return String(input || '').replace(/\\/g, '/');
 }
@@ -384,9 +390,9 @@ function buildArticleRecord(filePath, slug, editableSource, sidecarScripts, asse
 function buildHeroCluster() {
   return `
     <section class="feature-cluster card-surface">
-      <div class="feature-link-block is-placeholder" data-home-slot="lovestory1">占位符 / 01</div>
-      <div class="feature-link-block is-placeholder" data-home-slot="lovestory2">占位符 / 02</div>
-      <div class="feature-link-block is-placeholder" data-home-slot="lovestory3">占位符 / 03</div>
+      <div class="feature-link-block is-placeholder" data-home-slot="lovestory1">lovestory1</div>
+      <div class="feature-link-block is-placeholder" data-home-slot="lovestory2">lovestory2</div>
+      <div class="feature-link-block is-placeholder" data-home-slot="lovestory3">lovestory3</div>
     </section>
   `.trim();
 }
@@ -416,7 +422,7 @@ function buildArticleModal() {
       <div class="article-modal-dialog">
         <div class="article-modal-header">
           <div class="article-modal-meta" id="article-modal-meta"></div>
-          <button class="article-modal-close" id="article-modal-close" type="button" aria-label="关闭">×</button>
+          <button class="article-modal-close" id="article-modal-close" type="button" aria-label="close">×</button>
         </div>
         <div class="article-modal-scroll">
           <div class="article-modal-heading">
@@ -460,7 +466,7 @@ function buildHomePage() {
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-${getSiteChrome('新版文章站 | 派大栓', '技术、诗歌与散文并置的 Wired 风格静态网站。')}
+${getSiteChrome('zgggy', 'personal blog of ZGGGY')}
 </head>
 <body data-page="home">
 ${buildHeader()}
@@ -469,7 +475,7 @@ ${buildHeader()}
     <article class="hero-copy card-surface" data-home-slot="hero">
       <div class="hero-copy-meta"></div>
       <h1>ZGGGY</h1>
-      <p class="hero-lead">这里读取固定 md 的摘要内容。</p>
+      <p class="hero-lead">hero</p>
     </article>
     ${buildHeroCluster()}
     <section class="algorithm-stack card-surface">
@@ -478,7 +484,7 @@ ${buildHeader()}
     </section>
   </section>
 
-  <section class="midline-strip" data-home-slot="midline"><p>这里先放一句话，后面再换成你真正想展示的内容。</p></section>
+  <section class="midline-strip" data-home-slot="midline"><p>midline</p></section>
 
   <section class="directory-layout">
     <aside class="directory-sidebar card-surface">
@@ -1562,17 +1568,13 @@ function initHomeDirectory(runtimeData) {
   }
 
   function getDirectoryTarget() {
-    return document.querySelector('.directory-layout');
+    return document.querySelector('.directory-main') || document.querySelector('.directory-layout');
   }
 
-  function getSidebarTarget() {
-    return document.querySelector('.directory-sidebar');
-  }
-
-  function alignDirectoryIntoView(behavior, useSidebarTarget) {
+  function alignDirectoryIntoView(behavior) {
     syncHeaderState();
     syncLayoutMetrics();
-    const target = useSidebarTarget ? getSidebarTarget() || getDirectoryTarget() : getDirectoryTarget();
+    const target = getDirectoryTarget();
     if (!target) return;
     const desiredTop = Math.max(target.getBoundingClientRect().top + window.scrollY - getScrollOffset(), 0);
     const spacer = getScrollSpacer();
@@ -1591,12 +1593,12 @@ function initHomeDirectory(runtimeData) {
     directoryAutoScrollActive = true;
     lockSpacerReset();
     requestAnimationFrame(() => {
-      alignDirectoryIntoView('smooth', false);
+      alignDirectoryIntoView('smooth');
       correctionTimers = [220, 420, 680].map((delay) =>
         window.setTimeout(() => {
           if (!directoryAutoScrollActive) return;
           lockSpacerReset();
-          alignDirectoryIntoView('auto', true);
+          alignDirectoryIntoView('auto');
         }, delay)
       );
       const releaseTimer = window.setTimeout(() => {
@@ -1754,13 +1756,21 @@ function syncLayoutMetrics() {
 function syncHeaderState() {
   const header = document.getElementById('site-header-root');
   if (!header) return;
-  const wasCondensed = header.classList.contains('is-condensed');
-  const expandThreshold = 4;
-  const condenseThreshold = 72;
-  const condensed = wasCondensed ? window.scrollY > expandThreshold : window.scrollY > condenseThreshold;
-  const changed = header.classList.contains('is-condensed') !== condensed;
+  const progress = Math.max(0, Math.min(1, window.scrollY / 72));
+  const condensed = progress >= 0.999;
+  header.style.setProperty('--header-condense', progress.toFixed(4));
   header.classList.toggle('is-condensed', condensed);
-  if (changed) syncLayoutMetrics();
+  syncLayoutMetrics();
+}
+
+let headerSyncFrame = 0;
+
+function requestHeaderSync() {
+  if (headerSyncFrame) return;
+  headerSyncFrame = window.requestAnimationFrame(() => {
+    headerSyncFrame = 0;
+    syncHeaderState();
+  });
 }
 
 function showRuntimeLoadError(error) {
@@ -1776,10 +1786,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadAlgorithmScripts();
   initAlgorithms();
   window.addEventListener('resize', () => {
-    syncHeaderState();
-    syncLayoutMetrics();
+    requestHeaderSync();
   });
-  window.addEventListener('scroll', syncHeaderState, { passive: true });
+  window.addEventListener('scroll', requestHeaderSync, { passive: true });
   try {
     const runtimeData = await loadRuntimeArticles();
     initHomeSlots(runtimeData);
@@ -1812,6 +1821,7 @@ function buildStyles() {
   --space-tight: 12px;
   --card-padding: 22px;
   --header-height: 0px;
+  --header-condense: 0;
 }
 
 * { box-sizing: border-box; }
@@ -1856,19 +1866,17 @@ a { color: inherit; text-decoration: none; }
 .header-inner {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: var(--space);
+  gap: calc(20px - 6px * var(--header-condense));
   align-items: center;
-  padding: 18px 24px 16px;
-  transition: padding 180ms ease, gap 180ms ease;
+  padding: calc(18px - 10px * var(--header-condense)) 24px calc(16px - 8px * var(--header-condense));
 }
 
-.brandmark { display: inline-flex; flex-direction: column; gap: 4px; transition: gap 180ms ease; }
+.brandmark { display: inline-flex; flex-direction: column; gap: calc(4px * (1 - var(--header-condense))); }
 .brandmark-main {
-  font-size: 1.05rem;
+  font-size: calc(1.05rem - 0.11rem * var(--header-condense));
   letter-spacing: 0.08em;
   text-transform: uppercase;
   line-height: 1;
-  transition: font-size 180ms ease;
 }
 
 .brandmark-sub,
@@ -1878,17 +1886,16 @@ a { color: inherit; text-decoration: none; }
   letter-spacing: 0.08em;
 }
 
-.brandmark-sub { font-size: 0.72rem; color: var(--text-muted); transition: font-size 180ms ease; }
-
-.site-header.is-condensed .header-inner {
-  gap: 14px;
-  padding-top: 8px;
-  padding-bottom: 8px;
+.brandmark-sub {
+  font-size: calc(0.72rem - 0.06rem * var(--header-condense));
+  color: var(--text-muted);
+  opacity: calc(1 - var(--header-condense));
+  max-height: calc(1.4em * (1 - var(--header-condense)) + 0.001px);
+  overflow: hidden;
+  transform: translateY(calc(-4px * var(--header-condense)));
 }
 
-.site-header.is-condensed .brandmark { gap: 0; }
-.site-header.is-condensed .brandmark-main { font-size: 0.94rem; }
-.site-header.is-condensed .brandmark-sub { display: none; }
+.site-header.is-condensed .brandmark-sub { pointer-events: none; }
 
 .page-shell { padding: calc(var(--space) + 8px) 24px 72px; }
 .card-surface { border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
