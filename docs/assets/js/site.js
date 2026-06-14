@@ -1343,4 +1343,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.error(error);
     showRuntimeLoadError(error);
   }
+
+  const loadingOverlay = document.getElementById('loading-overlay');
+  if (loadingOverlay) {
+    loadingOverlay.classList.add('is-hidden');
+    setTimeout(() => loadingOverlay.remove(), 600);
+  }
 });
