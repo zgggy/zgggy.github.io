@@ -745,3 +745,148 @@ body:not(.dark-mode) .theme-toggle::after { content: '\2600'; font-size: 13px; }
   .article-modal.has-modal-side .article-modal-side { width: auto; max-width: none; flex: 1 1 auto; }
   .article-modal-side { justify-items: start; text-align: left; }
 }
+
+/* ── NAS 抖动效果 ── */
+
+@keyframes nas-jitter {
+  0%   { transform: translate(0, 0) skewX(0deg); }
+  10%  { transform: translate(-0.8px, 0.4px) skewX(-0.2deg); }
+  20%  { transform: translate(1px, -0.3px) skewX(0.15deg); }
+  30%  { transform: translate(-0.4px, 0.6px) skewX(0.25deg); }
+  40%  { transform: translate(0.6px, -0.5px) skewX(-0.15deg); }
+  50%  { transform: translate(-0.9px, 0.3px) skewX(0.2deg); }
+  60%  { transform: translate(0.5px, 0.4px) skewX(-0.25deg); }
+  70%  { transform: translate(-0.3px, -0.7px) skewX(0.15deg); }
+  80%  { transform: translate(0.8px, 0.5px) skewX(-0.2deg); }
+  90%  { transform: translate(-0.6px, -0.4px) skewX(0.25deg); }
+  100% { transform: translate(0.4px, 0.3px) skewX(0deg); }
+}
+
+.nas-jitter {
+  animation: nas-jitter 300ms steps(3) forwards;
+  will-change: transform;
+}
+
+.nas-syslog {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0 -22px -22px;
+  padding: 6px 22px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  opacity: 0.55;
+  background: linear-gradient(to top, var(--surface) 60%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
+
+.nas-syslog-prefix {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.nas-syslog-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: nas-syslog-flash 300ms ease-out;
+}
+
+@keyframes nas-syslog-flash {
+  0%   { opacity: 0.3; }
+  40%  { opacity: 0.85; }
+  100% { opacity: 1; }
+}
+
+.nas-syslog.is-flash .nas-syslog-text {
+  animation: nas-syslog-flash 300ms ease-out;
+}
+
+@keyframes nas-word-jitter {
+  0%   { transform: translate(0, 0); }
+  10%  { transform: translate(-1.5px, 0.8px); }
+  20%  { transform: translate(1.8px, -0.6px); }
+  30%  { transform: translate(-0.8px, 1.2px); }
+  40%  { transform: translate(1.2px, -1px); }
+  50%  { transform: translate(-1.8px, 0.5px); }
+  60%  { transform: translate(0.8px, 1px); }
+  70%  { transform: translate(-0.5px, -1.2px); }
+  80%  { transform: translate(1.5px, 0.8px); }
+  90%  { transform: translate(-1.2px, -0.5px); }
+  100% { transform: translate(0.8px, 0.5px); }
+}
+
+.nas-word-jitter {
+  display: inline-block;
+  animation: nas-word-jitter 80ms steps(2) infinite;
+}
+
+/* ── 樱花飘落效果 ── */
+
+.sakura-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.article-modal-dialog {
+  position: relative;
+  z-index: 2;
+}
+
+@keyframes sakura-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+  }
+  10% {
+    transform: translate(calc(var(--drift-dir) * 30px), 10vh) rotate(36deg);
+  }
+  20% {
+    transform: translate(calc(var(--drift-dir) * 65px), 20vh) rotate(72deg);
+  }
+  30% {
+    transform: translate(calc(var(--drift-dir) * 90px), 30vh) rotate(108deg);
+  }
+  40% {
+    transform: translate(calc(var(--drift-dir) * 130px), 40vh) rotate(144deg);
+  }
+  50% {
+    transform: translate(calc(var(--drift-dir) * 160px), 50vh) rotate(180deg);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(calc(var(--drift-dir) * 200px), 60vh) rotate(216deg);
+  }
+  70% {
+    transform: translate(calc(var(--drift-dir) * 230px), 70vh) rotate(252deg);
+  }
+  80% {
+    transform: translate(calc(var(--drift-dir) * 270px), 80vh) rotate(288deg);
+  }
+  90% {
+    transform: translate(calc(var(--drift-dir) * 300px), 90vh) rotate(324deg);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(calc(var(--drift-dir) * 340px), 100vh) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+.sakura-petal {
+  position: absolute;
+  line-height: 1;
+  animation: sakura-fall linear forwards;
+  will-change: transform, opacity, filter;
+}

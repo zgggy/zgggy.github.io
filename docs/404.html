@@ -7,8 +7,9 @@
 <script>
   // 将 404 路径转换为首页的 hash 路由
   var path = window.location.pathname.replace(/\/+$/, '');
-  var base = path.substring(0, path.lastIndexOf('/'));
-  window.location.replace(base + '/#/404');
+  var lastSlash = path.lastIndexOf('/');
+  var base = lastSlash > 0 ? path.substring(0, lastSlash) : '';
+  window.location.replace((base || '.') + '/#/404');
 </script>
 </head>
 <body>

@@ -2,14 +2,13 @@
   'use strict';
 
   window.__registerSiteFeature((api) => {
-    const runtime = api.runtimeData;
-    const modal = runtime.modalElement;
-    const title = runtime.modalTitleElement;
-    const meta = runtime.modalMetaElement;
-    const time = runtime.modalTimeElement;
-    const summary = runtime.modalSummaryElement;
-    const side = runtime.modalSideElement;
-    const body = runtime.modalBodyElement;
+    const modal = document.getElementById('article-modal');
+    const title = document.getElementById('article-modal-title');
+    const meta = document.getElementById('article-modal-meta');
+    const time = document.getElementById('article-modal-time');
+    const summary = document.getElementById('article-modal-summary');
+    const side = modal ? modal.querySelector('.article-modal-side') : null;
+    const body = document.getElementById('article-modal-body');
     let syncingHash = false;
 
     function pushArticleHash(slug) {
@@ -56,6 +55,9 @@
       } else if (hash.startsWith('#/article/')) {
         const slug = decodeURIComponent(hash.slice('#/article/'.length));
         if (slug) api.openArticle(slug);
+      } else if (hash && hash !== '#') {
+        // 未知的 hash 路由，显示 404
+        show404();
       }
     }
 
