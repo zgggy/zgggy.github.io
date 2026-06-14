@@ -1,5 +1,5 @@
 window.__registerSiteFeature(function(api) {
-  var NAS_SLUG = 'poem/NAS';
+  var NAS_SLUG = 'poem/nas';
   var TICK_INTERVAL = 2600;
   var JITTER_DURATION = 300;
   var JITTER_MIN_DELAY = 1000;
