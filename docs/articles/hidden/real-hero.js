@@ -39,6 +39,11 @@ window.__registerHiddenArticleTrigger?.(({ onArticleOpen, onArticleClose, open }
     clearHeroTitleGradient();
 
     if (slug === 'hero') {
+      if (heroTitleArmed) {
+        heroCloseCount = 0;
+        heroTitleArmed = false;
+        return;
+      }
       heroCloseCount += 1;
       heroTitleArmed = heroCloseCount >= 5;
       return;

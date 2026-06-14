@@ -586,11 +586,12 @@ class PathPlanner {
         const path = this.getDisplayPath();
         const firstY = this.getPathYAtX(0);
         const lastY = this.getPathYAtX(this.width);
+        const c = window.getAlgoColors ? window.getAlgoColors() : { bgAlt: '#fafafa', text: '#9f9f9f' };
 
-        this.ctx.fillStyle = '#fafafa';
+        this.ctx.fillStyle = c.bgAlt;
         this.ctx.fillRect(0, 0, this.width, this.height);
 
-        this.ctx.fillStyle = '#9f9f9f';
+        this.ctx.fillStyle = c.text;
         this.ctx.beginPath();
         this.ctx.moveTo(0, this.height);
         this.ctx.lineTo(0, firstY);
@@ -617,6 +618,7 @@ class PathPlanner {
     }
 
     drawObstacles() {
+        const c = window.getAlgoColors ? window.getAlgoColors() : { textDark: '#666666', bgAlt: '#f4f4f4' };
         for (let i = 0; i < this.obstacles.length; i++) {
             const obstacle = this.getObstaclePosition(i);
             const centerX = obstacle.x + obstacle.width / 2;
@@ -624,7 +626,7 @@ class PathPlanner {
             const pathY = this.getPathYAtX(centerX);
             const isAbovePath = centerY < pathY;
 
-            this.ctx.fillStyle = isAbovePath ? '#666666' : '#f4f4f4';
+            this.ctx.fillStyle = isAbovePath ? c.textDark : c.bgAlt;
             this.traceRoundedRectPath(obstacle.x, obstacle.y, obstacle.width, obstacle.height, 7);
             this.ctx.fill();
         }
@@ -633,11 +635,12 @@ class PathPlanner {
     drawEgoVehicle() {
         const carX = this.padding;
         const carY = this.height / 2 - this.carWidth / 2;
+        const c = window.getAlgoColors ? window.getAlgoColors() : { highlight: '#4a90e2', highlightStroke: '#057dbc' };
         
         // 绘制车box（2米宽，5米长，朝右）
         // 不透明蓝色车子，边框深蓝
-        this.ctx.fillStyle = '#4a90e2';
-        this.ctx.strokeStyle = '#057dbc';
+        this.ctx.fillStyle = c.highlight;
+        this.ctx.strokeStyle = c.highlightStroke;
         this.ctx.lineWidth = 2;
         this.ctx.fillRect(carX, carY, this.carLength, this.carWidth);
         this.ctx.strokeRect(carX, carY, this.carLength, this.carWidth);
@@ -653,6 +656,7 @@ class PathPlanner {
         const self = this;
         
         function animate(currentTime) {
+            if (self._paused) { requestAnimationFrame(animate); return; }
             if (currentTime - lastTime >= updateInterval) {
                 self.updateFloat();
                 self.updatePath();

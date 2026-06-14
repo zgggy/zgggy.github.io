@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>404 - zgggy</title>
+<script>
+  // 将 404 路径转换为首页的 hash 路由
+  var path = window.location.pathname.replace(/\/+$/, '');
+  var base = path.substring(0, path.lastIndexOf('/'));
+  window.location.replace(base + '/#/404');
+</script>
+</head>
+<body>
+<noscript><meta http-equiv="refresh" content="0;url=./#/404"></noscript>
+</body>
+</html>

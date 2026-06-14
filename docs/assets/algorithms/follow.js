@@ -415,34 +415,36 @@ class PathFollowingVisualizer {
 
     // 绘制
     draw() {
-        this.ctx.fillStyle = '#e4e4e4';
+        const c = window.getAlgoColors ? window.getAlgoColors() : { line: '#e4e4e4', bgAlt: '#fafafa', muted: '#c2c2c2', accent: '#111111', textDark: '#5f5f5f' };
+        this.ctx.fillStyle = c.line;
         this.ctx.fillRect(0, 0, this.width, this.height);
 
         if (!this.path.length) return;
 
         // 外侧浅灰，内侧留白
-        this.ctx.fillStyle = '#fafafa';
+        this.ctx.fillStyle = c.bgAlt;
         this.tracePath();
         this.ctx.fill();
 
         // 绘制控制点
         for (let i = 0; i < this.controlPoints.length; i++) {
             const pos = this.getControlPointPosition(i);
-            this.drawFilledCircle(pos.x, pos.y, 5.5, '#c2c2c2');
+            this.drawFilledCircle(pos.x, pos.y, 5.5, c.muted);
         }
 
         // 被跟踪的小球
         const closestIndex = this.findClosestPathIndex();
         const { point: lookaheadPoint } = this.findLookaheadPoint(closestIndex);
-        this.drawFilledCircle(lookaheadPoint.x, lookaheadPoint.y, 3.5, '#111111');
+        this.drawFilledCircle(lookaheadPoint.x, lookaheadPoint.y, 3.5, c.accent);
 
         // 跟踪的小球
-        this.drawFilledCircle(this.vehicle.x, this.vehicle.y, 11, '#5f5f5f');
+        this.drawFilledCircle(this.vehicle.x, this.vehicle.y, 11, c.textDark);
     }
 
     // 开始动画
     startAnimation() {
         const animate = () => {
+            if (this._paused) { requestAnimationFrame(animate); return; }
             this.updateFloat();
             this.updateVehicle();
             this.draw();

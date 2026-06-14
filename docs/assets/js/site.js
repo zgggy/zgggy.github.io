@@ -6,6 +6,22 @@ const SITE_GITHUB_SOURCE = {
   branch: 'main',
   docsDir: 'docs'
 };
+
+function getAlgoColors() {
+  const s = getComputedStyle(document.body);
+  return {
+    bg: s.getPropertyValue('--algo-bg').trim() || '#f7f7f7',
+    bgAlt: s.getPropertyValue('--algo-bg-alt').trim() || '#fafafa',
+    line: s.getPropertyValue('--algo-line').trim() || '#d0d0d0',
+    muted: s.getPropertyValue('--algo-muted').trim() || '#c8c8c8',
+    text: s.getPropertyValue('--algo-text').trim() || '#999999',
+    textDark: s.getPropertyValue('--algo-text-dark').trim() || '#666666',
+    accent: s.getPropertyValue('--algo-accent').trim() || '#333333',
+    highlight: s.getPropertyValue('--algo-highlight').trim() || '#4a90e2',
+    highlightStroke: s.getPropertyValue('--algo-highlight-stroke').trim() || '#057dbc'
+  };
+}
+window.getAlgoColors = getAlgoColors;
 const SITE_SCRIPT_URL = (() => {
   const matchedScript = Array.from(document.scripts || []).find((script) => {
     try {
@@ -356,7 +372,11 @@ function markdownToHtml(markdown, article) {
     }
 
     if (article.section === 'poem') {
-      html.push('<p class="poem-line">' + convertInline(trimmed) + '</p>');
+      if (trimmed === '-' || trimmed === '—' || trimmed === '---') {
+        html.push('<hr class="poem-separator">');
+      } else {
+        html.push('<p class="poem-line">' + convertInline(trimmed) + '</p>');
+      }
       index += 1;
       continue;
     }
@@ -941,7 +961,7 @@ function initArticleModal(runtimeData) {
     summary.hidden = !summary.textContent;
     side.hidden = time.hidden && summary.hidden;
     modal.classList.toggle('has-modal-side', !side.hidden);
-    body.className = 'article-modal-body article-body' + (article.section === 'poem' ? ' poem-body' + getPoemBodyVariantClass(article) : '');
+    body.className = 'article-modal-body article-body' + (article.section === 'poem' ? ' poem-body' + getPoemBodyVariantClass(article) : '') + (article.section === 'essay' ? ' essay-body' : '');
     body.innerHTML = article.html;
     modal.scrollTop = 0;
     modal.classList.add('active');
@@ -950,11 +970,6 @@ function initArticleModal(runtimeData) {
     requestAnimationFrame(() => {
       modal.scrollTop = 0;
     });
-    // 更新hash路由
-    const newHash = '#/article/' + encodeURIComponent(slug);
-    if (window.location.hash !== newHash) {
-      history.pushState({ articleSlug: slug }, '', newHash);
-    }
     emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.articleOpenListeners, createArticleOpenPayload(article));
   }
 
@@ -965,35 +980,7 @@ function initArticleModal(runtimeData) {
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('has-modal-open');
     currentArticleSlug = '';
-    // 清除hash
-    if (window.location.hash.startsWith('#/article/')) {
-      history.pushState(null, '', window.location.pathname + window.location.search);
-    }
     if (closedSlug) emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.articleCloseListeners, { slug: closedSlug, article: closedArticle, openArticle });
-  }
-
-  // 处理hash路由
-  function handleHashChange() {
-    const hash = window.location.hash;
-    if (hash.startsWith('#/article/')) {
-      const slug = decodeURIComponent(hash.slice('#/article/'.length));
-      if (slug && slug !== currentArticleSlug) {
-        openArticle(slug);
-      }
-    } else if (currentArticleSlug) {
-      closeArticle();
-    }
-  }
-
-  // 监听hash变化
-  window.addEventListener('hashchange', handleHashChange);
-
-  // 页面加载时检查hash
-  if (window.location.hash.startsWith('#/article/')) {
-    // 延迟执行，确保文章数据已加载
-    setTimeout(() => {
-      handleHashChange();
-    }, 100);
   }
 
   document.addEventListener('click', (event) => {
@@ -1130,9 +1117,21 @@ function initAlgorithms() {
   if (factories.length < 2) return;
 
   const shuffled = factories.slice().sort(() => Math.random() - 0.5).slice(0, 2);
-  [firstCanvas, secondCanvas].forEach((canvas, index) => {
-    shuffled[index].mount(canvas);
+  const visualizers = [firstCanvas, secondCanvas].map((canvas, index) => {
+    const viz = shuffled[index].mount(canvas);
+    return { canvas, viz };
   });
+
+  // 离屏暂停：canvas 不在视口时暂停动画
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const item = visualizers.find((v) => v.canvas === entry.target);
+        if (item && item.viz) item.viz._paused = !entry.isIntersecting;
+      });
+    }, { rootMargin: '60px' });
+    visualizers.forEach((item) => observer.observe(item.canvas));
+  }
 }
 
 function ensureAlgorithmRegistry() {

@@ -298,17 +298,18 @@ class RRTVisualizer {
     draw() {
         const ctx = this.ctx;
         const cs = this._cellSize;
-        ctx.fillStyle = '#f7f7f7';
+        const c = window.getAlgoColors ? window.getAlgoColors() : { bg: '#f7f7f7', line: '#d0d0d0', muted: '#c8c8c8', text: '#aaaaaa', accent: '#333333' };
+        ctx.fillStyle = c.bg;
         ctx.fillRect(0, 0, this.width, this.height);
 
         // 迷宫墙（纯矩形）
-        ctx.fillStyle = '#a0a0a0';
+        ctx.fillStyle = c.muted;
         for (const obs of this.obstacles) {
             ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
         }
 
         // 树边
-        ctx.strokeStyle = '#d0d0d0';
+        ctx.strokeStyle = c.line;
         ctx.lineWidth = 1.2;
         for (const edge of this.edges) {
             const a = this.getNode(edge.from);
@@ -320,7 +321,7 @@ class RRTVisualizer {
         }
 
         // 最终路径
-        const pathColor = '#333333';
+        const pathColor = c.accent;
         if (this._displayPath.length > 1) {
             ctx.strokeStyle = pathColor;
             ctx.lineWidth = 3;
@@ -336,15 +337,15 @@ class RRTVisualizer {
 
         // 起点（网格对齐正方形，浅灰/连上后深灰）
         const markerSize = cs * 2;
-        ctx.fillStyle = this.found ? pathColor : '#c8c8c8';
+        ctx.fillStyle = this.found ? pathColor : c.line;
         ctx.fillRect(this.start.x - markerSize / 2, this.start.y - markerSize / 2, markerSize, markerSize);
 
         // 终点
-        ctx.fillStyle = this.found ? pathColor : '#c8c8c8';
+        ctx.fillStyle = this.found ? pathColor : c.line;
         ctx.fillRect(this.goal.x - markerSize / 2, this.goal.y - markerSize / 2, markerSize, markerSize);
 
         // 树节点
-        ctx.fillStyle = '#aaaaaa';
+        ctx.fillStyle = c.text;
         for (let i = 1; i < this.nodes.length; i++) {
             const n = this.getNode(i);
             ctx.beginPath();
@@ -361,6 +362,7 @@ class RRTVisualizer {
         const self = this;
 
         function animate(currentTime) {
+            if (self._paused) { requestAnimationFrame(animate); return; }
             if (self.growing && currentTime - lastTime >= growInterval) {
                 for (let i = 0; i < self.maxIterationsPerFrame; i++) {
                     self.growStep();

@@ -332,14 +332,15 @@ class TravelingSalesmanVisualizer {
     }
 
     draw() {
-        this.ctx.fillStyle = '#f7f7f7';
+        const c = window.getAlgoColors ? window.getAlgoColors() : { bg: '#f7f7f7', text: '#999999' };
+        this.ctx.fillStyle = c.bg;
         this.ctx.fillRect(0, 0, this.width, this.height);
 
         this.drawEdges();
 
         for (let i = 0; i < this.nodes.length; i++) {
             const node = this.getDisplayNode(i);
-            this.ctx.fillStyle = '#999999';
+            this.ctx.fillStyle = c.text;
             this.ctx.beginPath();
             this.ctx.arc(node.x, node.y, this.pointRadius, 0, Math.PI * 2);
             this.ctx.fill();
@@ -501,6 +502,7 @@ class TravelingSalesmanVisualizer {
 
     startAnimation() {
         const animate = (currentTime) => {
+            if (this._paused) { requestAnimationFrame(animate); return; }
             this.updateFloating();
             this.tickPositionSmoothing();
             this.tickEdgeBrightness();

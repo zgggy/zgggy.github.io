@@ -231,7 +231,8 @@ class ClusteringVisualizer {
     // 绘制
     draw() {
         // 清空画布
-        this.ctx.fillStyle = '#f7f7f7';
+        const c = window.getAlgoColors ? window.getAlgoColors() : { bg: '#f7f7f7', muted: '#cfcfcf', text: '#9d9d9d', textDark: '#6a6a6a' };
+        this.ctx.fillStyle = c.bg;
         this.ctx.fillRect(0, 0, this.width, this.height);
 
         // 绘制噪声点
@@ -287,19 +288,20 @@ class ClusteringVisualizer {
     }
 
     getClusterVisual(clusterType) {
+        const c = window.getAlgoColors ? window.getAlgoColors() : { muted: '#cfcfcf', text: '#9d9d9d', textDark: '#6a6a6a' };
         if (clusterType === 'noise') {
             return {
                 hollow: false,
-                fill: '#cfcfcf',
-                stroke: '#9d9d9d'
+                fill: c.muted,
+                stroke: c.text
             };
         }
 
         const hollow = clusterType % 2 === 1;
         return {
             hollow,
-            fill: '#6a6a6a',
-            stroke: '#6a6a6a'
+            fill: c.textDark,
+            stroke: c.textDark
         };
     }
 
@@ -390,6 +392,7 @@ class ClusteringVisualizer {
     startAnimation() {
         const self = this;
         function animate() {
+            if (self._paused) { requestAnimationFrame(animate); return; }
             self.draw();
             requestAnimationFrame(animate);
         }
