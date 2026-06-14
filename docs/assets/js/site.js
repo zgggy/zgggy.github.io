@@ -1323,6 +1323,14 @@ function showRuntimeLoadError(error) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // 提前检测主题，应用到 loading 遮罩
+  const stored = localStorage.getItem('theme');
+  const isDark = stored === 'dark' || (stored !== 'light' && (
+    (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ||
+    new Date().getHours() >= 20 || new Date().getHours() < 6
+  ));
+  if (isDark) document.body.classList.add('dark-mode');
+
   syncLayoutMetrics();
   await loadAlgorithmScripts();
   await loadFeatureScripts();
