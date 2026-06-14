@@ -890,3 +890,65 @@ body:not(.dark-mode) .theme-toggle::after { content: '\2600'; font-size: 13px; }
   animation: sakura-fall linear forwards;
   will-change: transform, opacity, filter;
 }
+
+/* ── 小羊效果 ── */
+
+.lamb-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.lamb-sprite {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  font-size: 28px;
+  line-height: 1;
+  transform-origin: bottom center;
+}
+
+@keyframes lamb-jump {
+  0%, 100% { margin-bottom: 0; }
+  50% { margin-bottom: 20px; }
+}
+
+.lamb-sprite.is-jumping {
+  animation: lamb-jump 0.5s ease-in-out;
+}
+
+@keyframes grass-sway {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(10deg); }
+  75% { transform: rotate(-10deg); }
+}
+
+.lamb-grass {
+  position: absolute;
+  font-size: 20px;
+  line-height: 1;
+  bottom: 0;
+  transform-origin: bottom center;
+  animation: grass-sway 4s ease-in-out infinite;
+}
+
+@keyframes heart-rise {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-50px) scale(0.5);
+  }
+}
+
+.lamb-heart {
+  position: absolute;
+  font-size: 14px;
+  line-height: 1;
+  pointer-events: none;
+  animation: heart-rise 1s ease-out forwards;
+}
