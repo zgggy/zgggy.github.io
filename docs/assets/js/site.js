@@ -1331,9 +1331,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   syncLayoutMetrics();
   L && L.update(10);
-  await loadAlgorithmScripts();
+  try { await loadAlgorithmScripts(); } catch (e) { console.warn('[algorithms]', e); }
   L && L.update(20);
-  await loadFeatureScripts();
+  try { await loadFeatureScripts(); } catch (e) { console.warn('[features]', e); }
   L && L.update(30);
   initAlgorithms();
   window.addEventListener('resize', syncLayoutMetrics);
