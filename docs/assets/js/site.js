@@ -1323,22 +1323,30 @@ function showRuntimeLoadError(error) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  var L = window.__loading;
   // 同步内联脚本设置的主题到 body
   if (document.documentElement.classList.contains('dark-mode')) {
     document.body.classList.add('dark-mode');
   }
 
   syncLayoutMetrics();
+  L && L.update(10);
   await loadAlgorithmScripts();
+  L && L.update(20);
   await loadFeatureScripts();
+  L && L.update(30);
   initAlgorithms();
   window.addEventListener('resize', syncLayoutMetrics);
   try {
+    L && L.update(40);
     const runtimeData = await loadRuntimeArticles();
+    L && L.update(70);
     const modalControls = initArticleModal(runtimeData);
     initHomeDirectory(runtimeData);
+    L && L.update(80);
     initSiteFeatures(runtimeData, modalControls);
     initHomeSlots(runtimeData);
+    L && L.update(90);
     emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.appReadyListeners, {
       runtimeData,
       openArticle: modalControls.openArticle,
@@ -1349,9 +1357,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     showRuntimeLoadError(error);
   }
 
-  const loadingOverlay = document.getElementById('loading-overlay');
-  if (loadingOverlay) {
-    loadingOverlay.classList.add('is-hidden');
-    setTimeout(() => loadingOverlay.remove(), 600);
+  L && L.update(100);
+  if (L) {
+    setTimeout(function() { L.hide(); }, 300);
+  } else {
+    var fallback = document.getElementById('loading-overlay');
+    if (fallback) {
+      fallback.classList.add('is-hidden');
+      setTimeout(function() { fallback.remove(); }, 600);
+    }
   }
 });
