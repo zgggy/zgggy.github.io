@@ -1330,23 +1330,23 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   syncLayoutMetrics();
-  L && L.update(10);
+  L && await L.update(10);
   try { await loadAlgorithmScripts(); } catch (e) { console.warn('[algorithms]', e); }
-  L && L.update(20);
+  L && await L.update(20);
   try { await loadFeatureScripts(); } catch (e) { console.warn('[features]', e); }
-  L && L.update(30);
+  L && await L.update(30);
   initAlgorithms();
   window.addEventListener('resize', syncLayoutMetrics);
   try {
-    L && L.update(40);
+    L && await L.update(40);
     const runtimeData = await loadRuntimeArticles();
-    L && L.update(70);
+    L && await L.update(70);
     const modalControls = initArticleModal(runtimeData);
     initHomeDirectory(runtimeData);
-    L && L.update(80);
+    L && await L.update(80);
     initSiteFeatures(runtimeData, modalControls);
     initHomeSlots(runtimeData);
-    L && L.update(90);
+    L && await L.update(90);
     emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.appReadyListeners, {
       runtimeData,
       openArticle: modalControls.openArticle,
@@ -1357,7 +1357,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     showRuntimeLoadError(error);
   }
 
-  L && L.update(100);
+  L && await L.update(100);
   if (L) {
     setTimeout(function() { L.hide(); }, 300);
   } else {

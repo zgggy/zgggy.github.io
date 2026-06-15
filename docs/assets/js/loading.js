@@ -3,7 +3,7 @@
     0:   '正在摆弄太阳...',
     10:  '正在和狗狗玩耍...',
     20:  '正在学校上课...',
-    30:  '正在炸毁图书馆...',
+    30:  '正在图书馆睡觉...',
     40:  '正在大树下乘凉...',
     50:  '正在亲吻小羊...',
     60:  '正在村庄里面挖井...',
@@ -12,10 +12,12 @@
     90:  '正在打喷嚏...'
   };
 
+  var MIN_DISPLAY_TIME = 100;
   var overlay = document.getElementById('loading-overlay');
   var bar = null;
   var text = null;
   var current = 0;
+  var lastUpdateTime = 0;
 
   function createUI() {
     if (!overlay) return;
@@ -40,7 +42,7 @@
     return MESSAGES[0];
   }
 
-  function update(percent) {
+  function applyUpdate(percent) {
     current = Math.max(current, Math.min(100, percent));
     if (bar) {
       bar.firstChild.style.width = current + '%';
@@ -48,6 +50,26 @@
     if (text) {
       text.textContent = getMessage(current);
     }
+    lastUpdateTime = Date.now();
+  }
+
+  function update(percent) {
+    if (percent <= current) return Promise.resolve();
+
+    return new Promise(function(resolve) {
+      var elapsed = Date.now() - lastUpdateTime;
+      var remaining = MIN_DISPLAY_TIME - elapsed;
+
+      if (remaining <= 0) {
+        applyUpdate(percent);
+        resolve();
+      } else {
+        setTimeout(function() {
+          applyUpdate(percent);
+          resolve();
+        }, remaining);
+      }
+    });
   }
 
   function hide() {

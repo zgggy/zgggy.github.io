@@ -1,7 +1,7 @@
 window.__registerSiteFeature(function(api) {
   var SLUG = 'poem/小羊';
   var GRASS_INTERVAL = 10000;
-  var MAX_GRASS = 2;
+  var MAX_GRASS = 3;
   var MIN_GRASS_DISTANCE = 0.1;
   var MOVES_BEFORE_HUNGRY = 3;
   var WAIT_MIN = 1000;
