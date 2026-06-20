@@ -1,6 +1,6 @@
 window.__SITE_DATA__ = {
   "site": {
-    "title": "派大栓的静态文章站",
+    "title": "杉杪的静态文章站",
     "description": "技术、诗歌与散文并置的 Wired 风格静态网站",
     "root": "/test/blog-v2"
   },

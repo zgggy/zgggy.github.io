@@ -1,8 +1,8 @@
 # 单头文件 C++实现一个多层状态机的库
 
-继上次实现[状态机库](https://gitee.com/zgggy/autofsm/tree/old_version/)后，总结了一些不太容易修复的 bug，于是把它果断作为了一个抛弃原型，重构！
+继上次实现[状态机库](https://gitee.com/paidashuan/autofsm/tree/old_version/)后，总结了一些不太容易修复的 bug，于是把它果断作为了一个抛弃原型，重构！
 
-[新的状态机库](https://gitee.com/zgggy/autofsm/)应当做到以下几点：
+[新的状态机库](https://gitee.com/paidashuan/autofsm/)应当做到以下几点：
 
 1. 更简洁
    - 之前的 autofsm 库通过`State`,`Transition`,`Condition`和`Machine`四个类构成，通过枚举进行状态和转移的注册，且注册过程略显复杂。

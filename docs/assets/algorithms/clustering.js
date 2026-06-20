@@ -1,4 +1,7 @@
-// 目标聚类可视化模块 - DBSCAN算法
+// 目标聚类可视化模块 - DBSCAN step-by-step 播放
+const UNASSIGNED = -1;
+const NOISE = -2;
+
 class ClusteringVisualizer {
     constructor(canvas) {
         this.canvas = canvas;
@@ -7,21 +10,41 @@ class ClusteringVisualizer {
         this.baseHeight = canvas.height;
         this.width = this.baseWidth;
         this.height = this.baseHeight;
-        
+
         // 配置参数
-        this.points = []; // 点集合
-        this.clusters = []; // 聚类结果
-        this.noise = []; // 噪声点
-        
-        // DBSCAN参数 - 调整以减少噪声点
-        this.eps = 40; // 增大半径
-        this.minPts = 2; // 减少最小点数
-        
+        this.points = [];
+        this.clusters = [];
+        this.noise = [];
+
+        // DBSCAN 参数
+        this.eps = 40;
+        this.minPts = 2;
+
+        // 播放参数
+        this.stepInterval = 180;
+        this.completePause = 720;
+        this.transitionDuration = 980;
+        this.lastStepTime = 0;
+        this.motionTime = 0;
+        this.playState = 'pick-seed';
+        this.currentPointIndex = 0;
+        this.nextClusterId = 0;
+        this.activeClusterId = -1;
+        this.activePointIndex = -1;
+        this.activeNeighborIndices = [];
+        this.expansionQueue = [];
+        this.queuedIndices = new Set();
+        this.completeAt = 0;
+        this.transitionStartAt = 0;
+        this.transitionProgress = 0;
+        this.activeNeighborSet = new Set();
+        this.ripples = [];
+
         // 鼠标交互
-        this.mousePos = { x: -1000, y: -1000 }; // 初始位置在画布外
-        this.mouseRange = 50; // 鼠标影响范围
+        this.mousePos = { x: -1000, y: -1000 };
+        this.mouseRange = 50;
         this.handleResize = () => this.resizeCanvas();
-        
+
         // 初始化
         this.resizeCanvas();
         this.initPoints();
@@ -61,7 +84,7 @@ class ClusteringVisualizer {
         }
         this.mousePos.x *= scaleX;
         this.mousePos.y *= scaleY;
-        this.runDBSCAN();
+        this.resetPlayback();
     }
 
     getCanvasPoint(e) {
@@ -73,330 +96,710 @@ class ClusteringVisualizer {
             y: (e.clientY - rect.top) * scaleY
         };
     }
-    
-    // 初始化随机点
-    initPoints() {
-        const pointCount = 50;
-        for (let i = 0; i < pointCount; i++) {
-            // 生成随机点
-            const x = Math.random() * (this.width - 40) + 20;
-            const y = Math.random() * (this.height - 40) + 20;
-            this.points.push({ x, y, cluster: -1 });
-        }
-        this.runDBSCAN();
+
+    createPoint(x, y) {
+        return {
+            x,
+            y,
+            fromX: x,
+            fromY: y,
+            targetX: x,
+            targetY: y,
+            cluster: UNASSIGNED,
+            currentSize: 0,
+            currentLight: 0,
+            phase: Math.random() * Math.PI * 2,
+            wobbleX: (Math.random() - 0.5) * 1.8,
+            wobbleY: (Math.random() - 0.5) * 1.8
+        };
     }
-    
+
+    clampPointToCanvas(x, y, padding = 20) {
+        return {
+            x: Math.max(padding, Math.min(this.width - padding, x)),
+            y: Math.max(padding, Math.min(this.height - padding, y))
+        };
+    }
+
+    randomBetween(min, max) {
+        return min + Math.random() * (max - min);
+    }
+
+    sampleClusterOffset(spreadX, spreadY) {
+        return {
+            x: (Math.random() - 0.5) * spreadX + (Math.random() - 0.5) * spreadX * 0.35,
+            y: (Math.random() - 0.5) * spreadY + (Math.random() - 0.5) * spreadY * 0.35
+        };
+    }
+
+    createThreeClusterCenters() {
+        const horizontalPadding = Math.max(70, this.width * 0.12);
+        const verticalPadding = Math.max(58, this.height * 0.18);
+        const left = {
+            x: this.randomBetween(horizontalPadding, this.width * 0.34),
+            y: this.randomBetween(verticalPadding, this.height - verticalPadding)
+        };
+        const center = {
+            x: this.randomBetween(this.width * 0.4, this.width * 0.6),
+            y: this.randomBetween(verticalPadding, this.height - verticalPadding)
+        };
+        const right = {
+            x: this.randomBetween(this.width * 0.66, this.width - horizontalPadding),
+            y: this.randomBetween(verticalPadding, this.height - verticalPadding)
+        };
+        return [left, center, right];
+    }
+
+    buildClusteredLayout(pointCount) {
+        const safeCount = Math.max(9, pointCount || 0);
+        const centers = this.createThreeClusterCenters();
+        const layout = [];
+        const baseCount = Math.floor(safeCount / 3);
+        const remainder = safeCount % 3;
+        const counts = [
+            baseCount + (remainder > 0 ? 1 : 0),
+            baseCount + (remainder > 1 ? 1 : 0),
+            baseCount
+        ];
+
+        const spreadX = Math.max(28, Math.min(58, this.width * 0.12));
+        const spreadY = Math.max(22, Math.min(48, this.height * 0.18));
+
+        for (let clusterIndex = 0; clusterIndex < centers.length; clusterIndex++) {
+            const center = centers[clusterIndex];
+            for (let i = 0; i < counts[clusterIndex]; i++) {
+                const offset = this.sampleClusterOffset(spreadX, spreadY);
+                layout.push(this.clampPointToCanvas(center.x + offset.x, center.y + offset.y));
+            }
+        }
+
+        return layout.slice(0, safeCount);
+    }
+
+    shuffleArray(items) {
+        const next = items.slice();
+        for (let i = next.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [next[i], next[j]] = [next[j], next[i]];
+        }
+        return next;
+    }
+
+    createClusterTargets(count, center) {
+        const targets = [];
+        const spreadX = Math.max(26, Math.min(62, this.width * 0.12));
+        const spreadY = Math.max(20, Math.min(50, this.height * 0.18));
+
+        for (let i = 0; i < count; i++) {
+            const offset = this.sampleClusterOffset(spreadX, spreadY);
+            targets.push(this.clampPointToCanvas(center.x + offset.x, center.y + offset.y));
+        }
+
+        return targets;
+    }
+
+    buildInterleavedTransitionLayout() {
+        const safeCount = Math.max(9, this.points.length || 0);
+        const centers = this.shuffleArray(this.createThreeClusterCenters());
+        const baseCount = Math.floor(safeCount / 3);
+        const remainder = safeCount % 3;
+        const counts = [
+            baseCount + (remainder > 0 ? 1 : 0),
+            baseCount + (remainder > 1 ? 1 : 0),
+            baseCount
+        ];
+
+        const targetBuckets = centers.map((center, index) =>
+            this.shuffleArray(this.createClusterTargets(counts[index], center))
+        );
+        const bucketOrder = this.shuffleArray([0, 1, 2]);
+        const orderedPoints = this.points
+            .slice()
+            .sort((left, right) => left.x - right.x || left.y - right.y);
+        const nextTargets = new Map();
+
+        for (let i = 0; i < orderedPoints.length; i++) {
+            const point = orderedPoints[i];
+            let bucketIndex = bucketOrder[i % bucketOrder.length];
+
+            if (!targetBuckets[bucketIndex].length) {
+                bucketIndex = targetBuckets.findIndex((bucket) => bucket.length);
+            }
+
+            const target = bucketIndex >= 0
+                ? targetBuckets[bucketIndex].pop()
+                : this.clampPointToCanvas(point.x, point.y);
+            nextTargets.set(point, target);
+        }
+
+        return this.points.map((point) => nextTargets.get(point) || this.clampPointToCanvas(point.x, point.y));
+    }
+
+    applyLayout(pointsLayout) {
+        for (let i = 0; i < pointsLayout.length; i++) {
+            const next = pointsLayout[i];
+            const point = this.points[i];
+            if (!point || !next) continue;
+            point.x = next.x;
+            point.y = next.y;
+            point.fromX = next.x;
+            point.fromY = next.y;
+            point.targetX = next.x;
+            point.targetY = next.y;
+        }
+    }
+
+    prepareTransitionToNewLayout() {
+        const nextLayout = this.buildInterleavedTransitionLayout();
+        for (let i = 0; i < this.points.length; i++) {
+            const point = this.points[i];
+            const next = nextLayout[i];
+            if (!point || !next) continue;
+            point.fromX = point.x;
+            point.fromY = point.y;
+            point.targetX = next.x;
+            point.targetY = next.y;
+            point.phase = Math.random() * Math.PI * 2;
+            point.wobbleX = (Math.random() - 0.5) * 1.8;
+            point.wobbleY = (Math.random() - 0.5) * 1.8;
+        }
+        this.transitionProgress = 0;
+        this.transitionStartAt = performance.now();
+        this.playState = 'transition';
+        this.activePointIndex = -1;
+        this.activeNeighborIndices = [];
+        this.activeNeighborSet = new Set();
+        this.expansionQueue = [];
+        this.queuedIndices.clear();
+        // #region debug-point A:transition-start
+        fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"clustering-animation-lag",runId:"post-fix",hypothesisId:"A",location:"clustering.js:prepareTransitionToNewLayout",msg:"[DEBUG] transition-start",data:{pointCount:this.points.length,rippleCount:this.ripples.length,activeNeighborCount:this.activeNeighborSet.size,queuedCount:this.queuedIndices.size,transitionDuration:this.transitionDuration,completePause:this.completePause},ts:Date.now()})}).catch(()=>{});
+        // #endregion
+    }
+
+    updateTransition(now) {
+        const elapsed = Math.max(0, now - this.transitionStartAt);
+        const rawProgress = Math.min(1, elapsed / this.transitionDuration);
+        const eased = 1 - Math.pow(1 - rawProgress, 3);
+        this.transitionProgress = eased;
+
+        for (const point of this.points) {
+            point.x = point.fromX + (point.targetX - point.fromX) * eased;
+            point.y = point.fromY + (point.targetY - point.fromY) * eased;
+        }
+
+        // #region debug-point A:transition-sample
+        if (!this._dbgLastTransitionLogAt || now - this._dbgLastTransitionLogAt >= 180) {
+            this._dbgLastTransitionLogAt = now;
+            fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"clustering-animation-lag",runId:"post-fix",hypothesisId:"A",location:"clustering.js:updateTransition",msg:"[DEBUG] transition-sample",data:{elapsed:Math.round(elapsed),rawProgress:Number(rawProgress.toFixed(3)),eased:Number(eased.toFixed(3)),rippleCount:this.ripples.length,activeNeighborCount:this.activeNeighborSet.size,queuedCount:this.queuedIndices.size},ts:Date.now()})}).catch(()=>{});
+        }
+        // #endregion
+
+        if (rawProgress >= 1) {
+            for (const point of this.points) {
+                point.x = point.targetX;
+                point.y = point.targetY;
+            }
+            this.transitionProgress = 0;
+            this.resetPlayback();
+        }
+    }
+
+    // 初始化聚类点云
+    initPoints() {
+        const pointCount = 42;
+        const layout = this.buildClusteredLayout(pointCount);
+        for (let i = 0; i < layout.length; i++) {
+            const point = layout[i];
+            this.points.push(this.createPoint(point.x, point.y));
+        }
+        this.resetPlayback();
+    }
+
+    resetPointAssignments() {
+        for (const point of this.points) {
+            point.cluster = UNASSIGNED;
+        }
+        this.rebuildGroups();
+    }
+
+    resetPlayback() {
+        this.resetPointAssignments();
+        this.playState = 'pick-seed';
+        this.currentPointIndex = 0;
+        this.nextClusterId = 0;
+        this.activeClusterId = -1;
+        this.activePointIndex = -1;
+        this.activeNeighborIndices = [];
+        this.expansionQueue = [];
+        this.queuedIndices = new Set();
+        this.completeAt = 0;
+        this.transitionStartAt = 0;
+        this.transitionProgress = 0;
+        this.activeNeighborSet = new Set();
+        this.lastStepTime = 0;
+    }
+
+    rebuildGroups() {
+        const clusterMap = new Map();
+        this.noise = [];
+
+        for (const point of this.points) {
+            if (point.cluster === NOISE) {
+                this.noise.push(point);
+                continue;
+            }
+            if (point.cluster >= 0) {
+                if (!clusterMap.has(point.cluster)) {
+                    clusterMap.set(point.cluster, []);
+                }
+                clusterMap.get(point.cluster).push(point);
+            }
+        }
+
+        this.clusters = Array.from(clusterMap.entries())
+            .sort((left, right) => left[0] - right[0])
+            .map(([id, points]) => ({ id, points }));
+    }
+
     // 设置事件监听器
     setupEventListeners() {
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('click', (e) => this.handleClick(e));
         this.canvas.addEventListener('dblclick', (e) => this.handleDoubleClick(e));
-        this.canvas.addEventListener('mouseleave', (e) => this.handleMouseLeave(e));
+        this.canvas.addEventListener('mouseleave', () => this.handleMouseLeave());
         this.canvas.addEventListener('contextmenu', (e) => this.handleRightClick(e));
     }
-    
+
     // 处理鼠标移动
     handleMouseMove(e) {
         this.mousePos = this.getCanvasPoint(e);
-        // 实时更新聚类，添加动画效果
-        this.runDBSCAN();
     }
-    
+
     // 处理点击事件 - 添加点
     handleClick(e) {
         const { x, y } = this.getCanvasPoint(e);
-        
-        // 添加新点
-        this.points.push({ x, y, cluster: -1 });
-        this.runDBSCAN();
+        this.points.push(this.createPoint(x, y));
+        this.resetPlayback();
     }
-    
+
     // 处理双击事件 - 删除点
     handleDoubleClick(e) {
         const { x, y } = this.getCanvasPoint(e);
-        
-        // 查找并删除点击位置的点
         for (let i = this.points.length - 1; i >= 0; i--) {
             const point = this.points[i];
-            const distance = Math.sqrt(
-                Math.pow(point.x - x, 2) + 
-                Math.pow(point.y - y, 2)
-            );
+            const distance = Math.hypot(point.x - x, point.y - y);
             if (distance < 10) {
                 this.points.splice(i, 1);
-                this.runDBSCAN();
+                this.resetPlayback();
                 break;
             }
         }
     }
-    
+
     // 处理鼠标离开事件
-    handleMouseLeave(e) {
-        // 将鼠标位置设置在画布外，这样所有点都会恢复到原始大小
+    handleMouseLeave() {
         this.mousePos = { x: -1000, y: -1000 };
     }
-    
+
     // 处理右键点击事件 - 删除点
     handleRightClick(e) {
-        // 阻止右键菜单的默认行为
         e.preventDefault();
         const { x, y } = this.getCanvasPoint(e);
-        
-        // 查找并删除点击位置的点
         for (let i = this.points.length - 1; i >= 0; i--) {
             const point = this.points[i];
-            const distance = Math.sqrt(
-                Math.pow(point.x - x, 2) + 
-                Math.pow(point.y - y, 2)
-            );
+            const distance = Math.hypot(point.x - x, point.y - y);
             if (distance < 10) {
                 this.points.splice(i, 1);
-                this.runDBSCAN();
+                this.resetPlayback();
                 break;
             }
         }
     }
-    
-    // 运行DBSCAN算法
-    runDBSCAN() {
-        // 重置聚类
-        for (let point of this.points) {
-            point.cluster = -1; // -1 表示未分配
-        }
-        
-        this.clusters = [];
-        this.noise = [];
-        
-        let clusterId = 0;
-        
-        for (let i = 0; i < this.points.length; i++) {
-            const point = this.points[i];
-            if (point.cluster !== -1) continue; // 已分配
-            
-            const neighbors = this.getNeighbors(point);
-            if (neighbors.length < this.minPts) {
-                // 标记为噪声
-                this.noise.push(point);
-            } else {
-                // 开始新聚类
-                this.expandCluster(point, neighbors, clusterId);
-                this.clusters.push({ id: clusterId, points: [] });
-                clusterId++;
-            }
-        }
-        
-        // 为每个聚类收集点
-        for (let point of this.points) {
-            if (point.cluster !== -1) {
-                if (this.clusters[point.cluster]) {
-                    this.clusters[point.cluster].points.push(point);
-                }
-            }
-        }
-    }
-    
-    // 获取点的邻居
-    getNeighbors(point) {
+
+    getNeighborsForIndex(pointIndex) {
+        const point = this.points[pointIndex];
         const neighbors = [];
-        for (let otherPoint of this.points) {
-            if (point === otherPoint) continue;
-            const distance = Math.sqrt(
-                Math.pow(point.x - otherPoint.x, 2) + 
-                Math.pow(point.y - otherPoint.y, 2)
-            );
+        if (!point) return neighbors;
+
+        for (let i = 0; i < this.points.length; i++) {
+            if (i === pointIndex) continue;
+            const otherPoint = this.points[i];
+            const distance = Math.hypot(point.x - otherPoint.x, point.y - otherPoint.y);
             if (distance <= this.eps) {
-                neighbors.push(otherPoint);
+                neighbors.push(i);
             }
         }
         return neighbors;
     }
-    
-    // 扩展聚类
-    expandCluster(point, neighbors, clusterId) {
-        point.cluster = clusterId;
-        
-        let queue = [...neighbors];
-        while (queue.length > 0) {
-            const currentPoint = queue.shift();
-            if (currentPoint.cluster === -1) {
-                currentPoint.cluster = clusterId;
-                const currentNeighbors = this.getNeighbors(currentPoint);
-                if (currentNeighbors.length >= this.minPts) {
-                    queue = [...queue, ...currentNeighbors];
-                }
-            }
+
+    enqueueNeighbors(indices) {
+        for (const index of indices) {
+            const point = this.points[index];
+            if (!point) continue;
+            if (point.cluster >= 0) continue;
+            if (this.queuedIndices.has(index)) continue;
+            this.expansionQueue.push(index);
+            this.queuedIndices.add(index);
         }
     }
-    
-    // 绘制
-    draw() {
-        // 清空画布
-        const c = window.getAlgoColors ? window.getAlgoColors() : { bg: '#f7f7f7', muted: '#cfcfcf', text: '#9d9d9d', textDark: '#6a6a6a' };
-        this.ctx.fillStyle = c.bg;
-        this.ctx.fillRect(0, 0, this.width, this.height);
 
-        // 绘制噪声点
-        for (let point of this.noise) {
-            const distance = Math.sqrt(
-                Math.pow(point.x - this.mousePos.x, 2) + 
-                Math.pow(point.y - this.mousePos.y, 2)
-            );
-            if (distance < this.mouseRange) {
-                this.drawPoint(point, 8, 'noise');
-            } else {
-                this.drawPoint(point, 4, 'noise');
-            }
+    pickNextSeed() {
+        while (this.currentPointIndex < this.points.length) {
+            const point = this.points[this.currentPointIndex];
+            if (point && point.cluster === UNASSIGNED) break;
+            this.currentPointIndex += 1;
         }
-        
-        // 绘制聚类点
-        for (let i = 0; i < this.clusters.length; i++) {
-            for (let point of this.points) {
-                if (point.cluster === i) {
-                    const distance = Math.sqrt(
-                        Math.pow(point.x - this.mousePos.x, 2) + 
-                        Math.pow(point.y - this.mousePos.y, 2)
-                    );
-                    if (distance < this.mouseRange) {
-                        this.drawPoint(point, 10, i);
-                    } else {
-                        this.drawPoint(point, 6, i);
-                    }
-                }
-            }
-        }
-    }
-    
-    // 绘制点
-    drawPoint(point, size, clusterType) {
-        if (!point.currentSize) {
-            point.currentSize = size;
-        }
-        point.currentSize += (size - point.currentSize) * 0.2;
 
-        const visual = this.getClusterVisual(clusterType);
-        this.traceClusterShape(point.x, point.y, point.currentSize, clusterType);
-
-        if (visual.hollow) {
-            this.ctx.strokeStyle = visual.stroke;
-            this.ctx.lineWidth = Math.max(1.5, point.currentSize * 0.35);
-            this.ctx.stroke();
+        if (this.currentPointIndex >= this.points.length) {
+            this.playState = 'complete';
+            this.completeAt = performance.now() + this.completePause;
+            this.activePointIndex = -1;
+            this.activeNeighborIndices = [];
+            this.activeNeighborSet = new Set();
+            this.expansionQueue = [];
+            this.queuedIndices.clear();
             return;
         }
 
-        this.ctx.fillStyle = visual.fill;
-        this.ctx.fill();
+        this.activePointIndex = this.currentPointIndex;
+        this.activeNeighborIndices = this.getNeighborsForIndex(this.currentPointIndex);
+        this.activeNeighborSet = new Set(this.activeNeighborIndices);
+        this.spawnRipple(this.activePointIndex, 'seed');
+        this.playState = 'inspect-seed';
     }
 
-    getClusterVisual(clusterType) {
-        const c = window.getAlgoColors ? window.getAlgoColors() : { muted: '#cfcfcf', text: '#9d9d9d', textDark: '#6a6a6a' };
-        if (clusterType === 'noise') {
-            return {
-                hollow: false,
-                fill: c.muted,
-                stroke: c.text
-            };
+    inspectSeed() {
+        const point = this.points[this.activePointIndex];
+        if (!point) {
+            this.playState = 'pick-seed';
+            return;
         }
 
-        const hollow = clusterType % 2 === 1;
+        if (this.activeNeighborIndices.length < this.minPts) {
+            point.cluster = NOISE;
+            this.rebuildGroups();
+            this.currentPointIndex += 1;
+            this.playState = 'pick-seed';
+            return;
+        }
+
+        this.activeClusterId = this.nextClusterId;
+        point.cluster = this.activeClusterId;
+        this.expansionQueue = [];
+        this.queuedIndices.clear();
+        this.enqueueNeighbors(this.activeNeighborIndices);
+        this.rebuildGroups();
+        this.playState = 'expand-cluster';
+    }
+
+    expandClusterStep() {
+        if (!this.expansionQueue.length) {
+            this.nextClusterId += 1;
+            this.currentPointIndex += 1;
+            this.activeClusterId = -1;
+            this.activePointIndex = -1;
+            this.activeNeighborIndices = [];
+            this.activeNeighborSet = new Set();
+            this.playState = 'pick-seed';
+            return;
+        }
+
+        const currentIndex = this.expansionQueue.shift();
+        this.queuedIndices.delete(currentIndex);
+        const point = this.points[currentIndex];
+        if (!point) return;
+
+        this.activePointIndex = currentIndex;
+        this.activeNeighborIndices = this.getNeighborsForIndex(currentIndex);
+        this.activeNeighborSet = new Set(this.activeNeighborIndices);
+        this.spawnRipple(this.activePointIndex, 'expand');
+
+        if (point.cluster === UNASSIGNED || point.cluster === NOISE) {
+            point.cluster = this.activeClusterId;
+        }
+
+        if (this.activeNeighborIndices.length >= this.minPts) {
+            this.enqueueNeighbors(this.activeNeighborIndices);
+        }
+
+        this.rebuildGroups();
+    }
+
+    advancePlayback(now) {
+        if (this.playState === 'complete') {
+            if (now >= this.completeAt) {
+                this.prepareTransitionToNewLayout();
+            }
+            return;
+        }
+
+        if (this.playState === 'transition') {
+            this.updateTransition(now);
+            return;
+        }
+
+        if (this.playState === 'pick-seed') {
+            this.pickNextSeed();
+            return;
+        }
+
+        if (this.playState === 'inspect-seed') {
+            this.inspectSeed();
+            return;
+        }
+
+        if (this.playState === 'expand-cluster') {
+            this.expandClusterStep();
+        }
+    }
+
+    spawnRipple(pointIndex, kind) {
+        const point = this.points[pointIndex];
+        if (!point) return;
+        this.ripples.push({
+            x: point.x,
+            y: point.y,
+            bornAt: this.motionTime || performance.now(),
+            kind: kind || 'expand'
+        });
+        if (this.ripples.length > 12) {
+            this.ripples.splice(0, this.ripples.length - 12);
+        }
+    }
+
+    updateRipples(now) {
+        const duration = 640;
+        this.ripples = this.ripples.filter((ripple) => now - ripple.bornAt <= duration);
+    }
+
+    getPointDisplayPosition(point, index) {
+        if (this.playState === 'transition') {
+            return { x: point.x, y: point.y };
+        }
+        const t = this.motionTime * 0.0018 + index * 0.17 + point.phase;
         return {
-            hollow,
-            fill: c.textDark,
-            stroke: c.textDark
+            x: point.x + Math.sin(t * 1.3) * point.wobbleX,
+            y: point.y + Math.cos(t * 1.1) * point.wobbleY
         };
     }
 
-    traceClusterShape(x, y, radius, clusterType) {
-        if (clusterType === 'noise') {
-            this.ctx.beginPath();
-            this.ctx.arc(x, y, radius, 0, Math.PI * 2);
-            return;
-        }
+    getPointEnergy(index, point) {
+        const distanceToMouse = Math.hypot(point.x - this.mousePos.x, point.y - this.mousePos.y);
+        const hovered = distanceToMouse < this.mouseRange;
+        const isActive = index === this.activePointIndex;
+        const isNeighbor = this.activeNeighborSet.has(index);
+        const isQueued = this.queuedIndices.has(index);
 
-        const normalizedType = clusterType % 5;
-
-        if (normalizedType === 0) {
-            this.ctx.beginPath();
-            this.ctx.arc(x, y, radius, 0, Math.PI * 2);
-            return;
-        }
-
-        if (normalizedType === 2) {
-            this.traceRoundedRect(x, y, radius * 1.9, radius * 1.9, radius * 0.45);
-            return;
-        }
-
-        const sides = normalizedType === 1 ? 3 : normalizedType === 3 ? 5 : 6;
-        this.traceRoundedPolygon(x, y, radius * 1.2, sides, radius * 0.32, -Math.PI / 2);
+        let energy = 0.35 + (Math.sin(this.motionTime * 0.002 + point.phase) + 1) * 0.12;
+        if (point.cluster >= 0) energy += 0.18;
+        if (point.cluster === NOISE) energy -= 0.04;
+        if (this.playState === 'transition') energy += 0.08;
+        if (hovered) energy += 0.15;
+        if (isNeighbor) energy += 0.12;
+        if (isQueued) energy += 0.08;
+        if (isActive) energy += 0.35;
+        return Math.max(0.16, Math.min(1.1, energy));
     }
 
-    traceRoundedRect(centerX, centerY, width, height, radius) {
-        const x = centerX - width / 2;
-        const y = centerY - height / 2;
-        const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+    getPointLightTarget(index, point) {
+        const isActive = index === this.activePointIndex;
+        const isNeighbor = this.activeNeighborSet.has(index);
+        const isQueued = this.queuedIndices.has(index);
 
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + safeRadius, y);
-        this.ctx.lineTo(x + width - safeRadius, y);
-        this.ctx.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
-        this.ctx.lineTo(x + width, y + height - safeRadius);
-        this.ctx.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
-        this.ctx.lineTo(x + safeRadius, y + height);
-        this.ctx.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
-        this.ctx.lineTo(x, y + safeRadius);
-        this.ctx.quadraticCurveTo(x, y, x + safeRadius, y);
-        this.ctx.closePath();
-    }
+        let target = 0.14;
+        if (point.cluster >= 0) target = 0.28;
+        if (point.cluster === NOISE) target = 0.1;
+        if (isQueued) target = 0.42;
+        if (isNeighbor) target = 0.62;
+        if (isActive) target = 1;
 
-    traceRoundedPolygon(centerX, centerY, radius, sides, cornerRadius, rotation = 0) {
-        const vertices = [];
-        for (let i = 0; i < sides; i++) {
-            const angle = rotation + (Math.PI * 2 * i) / sides;
-            vertices.push({
-                x: centerX + Math.cos(angle) * radius,
-                y: centerY + Math.sin(angle) * radius
-            });
+        if (this.playState === 'transition') {
+            target *= 1 - this.transitionProgress;
         }
 
-        const maxCornerRadius = radius * 0.45;
-        const safeCornerRadius = Math.max(0, Math.min(cornerRadius, maxCornerRadius));
+        return Math.max(0, Math.min(1, target));
+    }
 
+    drawRipples() {
+        const c = window.getAlgoColors ? window.getAlgoColors() : { line: '#d0d0d0', text: '#9d9d9d', bgAlt: '#fafafa' };
+        const now = this.motionTime || performance.now();
+        const duration = 640;
+
+        this.ctx.save();
+        for (const ripple of this.ripples) {
+            const progress = Math.max(0, Math.min(1, (now - ripple.bornAt) / duration));
+            const alpha = progress < 0.45
+                ? progress / 0.45
+                : Math.max(0, 1 - (progress - 0.45) / 0.55);
+            if (alpha <= 0.001) continue;
+
+            const radius = 8 + progress * (ripple.kind === 'seed' ? 92 : 118);
+            this.ctx.globalAlpha = Math.min(1, alpha);
+            this.ctx.fillStyle = ripple.kind === 'seed' ? (c.bgAlt || c.line) : (c.line || c.bgAlt || c.text);
+            this.ctx.beginPath();
+            this.ctx.arc(ripple.x, ripple.y, radius, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+        this.ctx.restore();
+    }
+
+    drawActivePulse() {
+        const c = window.getAlgoColors ? window.getAlgoColors() : { bgAlt: '#fafafa' };
+        const point = this.points[this.activePointIndex];
+        if (!point || this.playState === 'transition') return;
+
+        const display = this.getPointDisplayPosition(point, this.activePointIndex);
+        const pulse = 1 + 0.06 * Math.sin(this.motionTime * 0.003 + point.phase);
+        const radius = 10 * pulse;
+
+        this.ctx.save();
+        this.ctx.fillStyle = c.bgAlt;
+        this.ctx.globalAlpha = 0.55;
         this.ctx.beginPath();
-        for (let i = 0; i < sides; i++) {
-            const prev = vertices[(i - 1 + sides) % sides];
-            const current = vertices[i];
-            const next = vertices[(i + 1) % sides];
+        this.ctx.arc(display.x, display.y, radius, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.restore();
+    }
 
-            const prevDx = prev.x - current.x;
-            const prevDy = prev.y - current.y;
-            const nextDx = next.x - current.x;
-            const nextDy = next.y - current.y;
-            const prevLength = Math.hypot(prevDx, prevDy) || 1;
-            const nextLength = Math.hypot(nextDx, nextDy) || 1;
+    getPointRenderType(point) {
+        if (point.cluster === NOISE) return 'noise';
+        if (point.cluster === UNASSIGNED) return 'unassigned';
+        return point.cluster;
+    }
 
-            const startX = current.x + (prevDx / prevLength) * safeCornerRadius;
-            const startY = current.y + (prevDy / prevLength) * safeCornerRadius;
-            const endX = current.x + (nextDx / nextLength) * safeCornerRadius;
-            const endY = current.y + (nextDy / nextLength) * safeCornerRadius;
+    getPointTargetSize(index, point) {
+        let size = point.cluster >= 0 ? 6 : 4;
+        if (point.cluster === UNASSIGNED) size = 4;
+        if (point.cluster === NOISE) size = 4.5;
+        size += this.getPointEnergy(index, point) * 1.8;
+        return size;
+    }
 
-            if (i === 0) {
-                this.ctx.moveTo(startX, startY);
-            } else {
-                this.ctx.lineTo(startX, startY);
+    // 绘制
+    draw() {
+        const c = window.getAlgoColors ? window.getAlgoColors() : { bg: '#f7f7f7' };
+        const drawStart = performance.now();
+        this.ctx.fillStyle = c.bg;
+        this.ctx.fillRect(0, 0, this.width, this.height);
+
+        this.drawRipples();
+        this.drawActivePulse();
+
+        for (let i = 0; i < this.points.length; i++) {
+            const point = this.points[i];
+            const clusterType = this.getPointRenderType(point);
+            const size = this.getPointTargetSize(i, point);
+            this.drawPoint(point, size, clusterType, i);
+        }
+
+        // #region debug-point E:draw-sample
+        const drawCost = performance.now() - drawStart;
+        if (!this._dbgLastDrawLogAt || this.motionTime - this._dbgLastDrawLogAt >= 220) {
+            this._dbgLastDrawLogAt = this.motionTime;
+            let maxLight = 0;
+            let avgLight = 0;
+            for (let i = 0; i < this.points.length; i++) {
+                const light = Number(this.points[i] && typeof this.points[i].currentLight === 'number' ? this.points[i].currentLight : 0);
+                maxLight = Math.max(maxLight, light);
+                avgLight += light;
             }
-            this.ctx.quadraticCurveTo(current.x, current.y, endX, endY);
+            avgLight = this.points.length ? avgLight / this.points.length : 0;
+            fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"clustering-animation-lag",runId:"post-fix",hypothesisId:"E",location:"clustering.js:draw",msg:"[DEBUG] draw-sample",data:{playState:this.playState,drawCostMs:Number(drawCost.toFixed(3)),pointCount:this.points.length,rippleCount:this.ripples.length,maxLight:Number(maxLight.toFixed(3)),avgLight:Number(avgLight.toFixed(3)),transitionProgress:Number(this.transitionProgress.toFixed(3))},ts:Date.now()})}).catch(()=>{});
         }
-        this.ctx.closePath();
+        // #endregion
     }
-    
+
+    // 绘制点
+    drawPoint(point, size, clusterType, index) {
+        const display = this.getPointDisplayPosition(point, index);
+        const targetLight = this.getPointLightTarget(index, point);
+        if (!point.currentSize) point.currentSize = size;
+        if (typeof point.currentLight !== 'number') point.currentLight = 0;
+        point.currentSize += (size - point.currentSize) * 0.24;
+        point.currentLight += (targetLight - point.currentLight) * (this.playState === 'transition' ? 0.28 : 0.16);
+        const visual = this.getClusterVisual(clusterType);
+
+        // #region debug-point B:light-sample
+        if (index === 0 && this.playState === 'transition' && (!this._dbgLastLightLogAt || this.motionTime - this._dbgLastLightLogAt >= 180)) {
+            this._dbgLastLightLogAt = this.motionTime;
+            fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"clustering-animation-lag",runId:"post-fix",hypothesisId:"B",location:"clustering.js:drawPoint",msg:"[DEBUG] light-sample",data:{index,clusterType:String(clusterType),targetLight:Number(targetLight.toFixed(3)),currentLight:Number(point.currentLight.toFixed(3)),currentSize:Number(point.currentSize.toFixed(3)),transitionProgress:Number(this.transitionProgress.toFixed(3))},ts:Date.now()})}).catch(()=>{});
+        }
+        // #endregion
+
+        if (this.playState === 'transition') {
+            const idleVisual = this.getClusterVisual('unassigned');
+            this.ctx.save();
+            this.ctx.globalAlpha = idleVisual.alpha;
+            this.ctx.beginPath();
+            this.ctx.arc(display.x, display.y, point.currentSize, 0, Math.PI * 2);
+            this.ctx.fillStyle = idleVisual.fill;
+            this.ctx.fill();
+
+            this.ctx.globalAlpha = Math.max(0, Math.min(1, point.currentLight * 0.92));
+            this.ctx.beginPath();
+            this.ctx.arc(display.x, display.y, point.currentSize + point.currentLight * 1.8, 0, Math.PI * 2);
+            this.ctx.fillStyle = visual.fill;
+            this.ctx.fill();
+            this.ctx.restore();
+            return;
+        }
+
+        this.ctx.save();
+        this.ctx.globalAlpha = visual.alpha + point.currentLight * visual.lightBoost;
+        this.ctx.beginPath();
+        this.ctx.arc(display.x, display.y, point.currentSize + point.currentLight * 1.6, 0, Math.PI * 2);
+        this.ctx.fillStyle = visual.fill;
+        this.ctx.fill();
+        this.ctx.restore();
+    }
+
+    getClusterVisual(clusterType) {
+        const c = window.getAlgoColors ? window.getAlgoColors() : { muted: '#cfcfcf', text: '#9d9d9d', textDark: '#6a6a6a', bgAlt: '#fafafa' };
+        if (clusterType === 'noise') {
+            return {
+                fill: c.muted,
+                alpha: 0.72,
+                lightBoost: 0.08
+            };
+        }
+
+        if (clusterType === 'unassigned') {
+            return {
+                fill: c.bgAlt || c.muted,
+                alpha: 0.88,
+                lightBoost: 0.06
+            };
+        }
+
+        return {
+            fill: c.textDark,
+            alpha: 0.82,
+            lightBoost: 0.12
+        };
+    }
+
     // 开始动画
     startAnimation() {
-        const self = this;
-        function animate() {
-            if (self._paused) { requestAnimationFrame(animate); return; }
-            self.draw();
+        const animate = (now) => {
+            if (this._paused) {
+                requestAnimationFrame(animate);
+                return;
+            }
+
+            this.motionTime = now;
+            this.updateRipples(now);
+
+            if (this.playState === 'transition') {
+                this.updateTransition(now);
+            } else if (!this.lastStepTime || now - this.lastStepTime >= this.stepInterval) {
+                this.advancePlayback(now);
+                this.lastStepTime = now;
+            }
+
+            this.draw();
             requestAnimationFrame(animate);
-        }
-        animate();
+        };
+        requestAnimationFrame(animate);
     }
 }
 

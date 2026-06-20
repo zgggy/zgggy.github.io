@@ -448,7 +448,7 @@ function renderSiteHeader() {
   root.innerHTML = [
     '<div class="header-inner">',
     '  <a class="brandmark" href="${joinSitePath('')}">',
-    '    <span class="brandmark-main">派大栓</span>',
+    '    <span class="brandmark-main">杉杪</span>',
     '    <span class="brandmark-sub">${BRAND_SUBTITLE}</span>',
     '  </a>',
     '</div>'
@@ -466,7 +466,7 @@ function buildHomePage() {
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-${getSiteChrome('zgggy', 'personal blog of ZGGGY')}
+${getSiteChrome('杉杪', '杉杪的个人博客')}
 </head>
 <body data-page="home">
 ${buildHeader()}
@@ -474,7 +474,7 @@ ${buildHeader()}
   <section class="hero-grid">
     <article class="hero-copy card-surface" data-home-slot="hero">
       <div class="hero-copy-meta"></div>
-      <h1>ZGGGY</h1>
+      <h1>杉杪</h1>
       <p class="hero-lead">hero</p>
     </article>
     ${buildHeroCluster()}
@@ -520,7 +520,7 @@ function buildSiteData(articles, algorithmScripts) {
 
   return {
     site: {
-      title: '派大栓的静态文章站',
+      title: '杉杪的静态文章站',
       description: '技术、诗歌与散文并置的 Wired 风格静态网站',
       root: SITE_ROOT
     },

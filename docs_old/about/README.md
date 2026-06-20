@@ -1,12 +1,12 @@
 # 关于
 
-本站[源码](https://github.com/zgggy/zgggy.github.io)。
+本站[源码](https://github.com/paidashuan/paidashuan.github.io)。
 
 > 从你出生的那一刻，端什么碗，吃什么饭，经历什么事，什么时候和谁结婚，都是定数。别太为难自己，顺其自然就好。人生的剧本，你早已在天堂看过了，你之所以选择这个剧本，是因为这一生中有你认为值得的地方。——梁晓声《人世间》
 
 ## 😀 个人简介
 
-![派大栓](src/paidashuan72.svg ":size=100px") <font size=6>派大栓/zgggy</font>
+![杉杪](src/paidashuan72.svg ":size=100px") <font size=6>杉杪</font>
 
 资深睡觉人 & 经验尚浅的自动驾驶工程尸一头，调度、规控相关，欢迎交流。
 
@@ -41,9 +41,9 @@
 
 ## 💌 联系方式
 
-- email📧 zgggy@foxmail.com
-- gitee🤤 https://gitee.com/zgggy
-- github🤔 https://github.com/zgggy
+- email📧 paidashuan@foxmail.com
+- gitee🤤 https://gitee.com/paidashuan
+- github🤔 https://github.com/paidashuan
 
 ---
 
