@@ -1,5 +1,6 @@
-window.__registerSiteFeature(function(api) {
-  var SLUG = 'poem/别旧人';
+window.__registerArticleFeature({
+  slug: 'poem/别旧人',
+  setup(api) {
   var PETAL_COUNT = 30;
   var FALL_DURATION = 23000;
   var SPAWN_INTERVAL = 500;
@@ -60,9 +61,8 @@ window.__registerSiteFeature(function(api) {
     }, FALL_DURATION + 2000);
   }
 
-  api.onArticleOpen(function(payload) {
+  api.onOpen(function() {
     cleanup();
-    if (payload.slug !== SLUG) return;
 
     var modal = document.getElementById('article-modal');
     if (!modal) return;
@@ -84,5 +84,6 @@ window.__registerSiteFeature(function(api) {
     });
   });
 
-  api.onArticleClose(function() { cleanup(); });
+  api.onClose(function() { cleanup(); });
+  }
 });

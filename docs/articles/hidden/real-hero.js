@@ -1,4 +1,6 @@
-window.__registerHiddenArticleTrigger?.(({ onArticleOpen, onArticleClose, open }) => {
+window.__registerArticleFeature({
+  slug: 'hidden/real-hero',
+  setup(api) {
   let heroCloseCount = 0;
   let heroTitleArmed = false;
   const gradientPalettes = [
@@ -35,7 +37,7 @@ window.__registerHiddenArticleTrigger?.(({ onArticleOpen, onArticleClose, open }
     title.style.webkitTextFillColor = 'transparent';
   }
 
-  onArticleClose(({ slug }) => {
+  api.onArticleClose(({ slug }) => {
     clearHeroTitleGradient();
 
     if (slug === 'hero') {
@@ -54,7 +56,7 @@ window.__registerHiddenArticleTrigger?.(({ onArticleOpen, onArticleClose, open }
     heroTitleArmed = false;
   });
 
-  onArticleOpen(({ slug, setTitleAction }) => {
+  api.onArticleOpen(({ slug, setTitleAction }) => {
     clearHeroTitleGradient();
     if (slug !== 'hero' || !heroTitleArmed) return;
 
@@ -66,8 +68,9 @@ window.__registerHiddenArticleTrigger?.(({ onArticleOpen, onArticleClose, open }
         clearHeroTitleGradient();
         heroCloseCount = 0;
         heroTitleArmed = false;
-        open();
+        api.open();
       }
     });
   });
+  }
 });

@@ -44,6 +44,11 @@ const HIDDEN_RUNTIME_BRIDGE = {
   directoryFilterListeners: [],
   hiddenDirectoryController: null
 };
+const ARTICLE_FEATURE_BRIDGE = {
+  registrations: [],
+  runtimeApi: null,
+  appReadyPayload: null
+};
 
 function addHiddenRuntimeListener(bucket, handler) {
   if (typeof handler !== 'function') return function noop() {};
@@ -63,6 +68,112 @@ function emitHiddenRuntimeListeners(bucket, payload) {
     }
   });
 }
+
+function enhanceArticleFeaturePayload(payload) {
+  const controller = window.__modalTitleActions__;
+  if (!controller || typeof controller.enhancePayload !== 'function') return payload;
+  return controller.enhancePayload(payload);
+}
+
+function createArticleFeatureApi(siteApi, slug) {
+  const targetSlug = String(slug || '').trim();
+
+  return {
+    slug: targetSlug,
+    get article() {
+      return siteApi && typeof siteApi.getArticle === 'function' ? siteApi.getArticle(targetSlug) : null;
+    },
+    getArticle() {
+      return siteApi && typeof siteApi.getArticle === 'function' ? siteApi.getArticle(targetSlug) : null;
+    },
+    open() {
+      if (siteApi && typeof siteApi.openArticle === 'function') siteApi.openArticle(targetSlug);
+    },
+    openArticle(slugToOpen) {
+      if (siteApi && typeof siteApi.openArticle === 'function') siteApi.openArticle(slugToOpen);
+    },
+    closeArticle() {
+      if (siteApi && typeof siteApi.closeArticle === 'function') siteApi.closeArticle();
+    },
+    onOpen(handler) {
+      if (!siteApi || typeof siteApi.onArticleOpen !== 'function' || typeof handler !== 'function') return function noop() {};
+      return siteApi.onArticleOpen((payload) => {
+        if (!payload || payload.slug !== targetSlug) return;
+        handler(enhanceArticleFeaturePayload(payload));
+      });
+    },
+    onClose(handler) {
+      if (!siteApi || typeof siteApi.onArticleClose !== 'function' || typeof handler !== 'function') return function noop() {};
+      return siteApi.onArticleClose((payload) => {
+        if (!payload || payload.slug !== targetSlug) return;
+        handler(payload);
+      });
+    },
+    onArticleOpen(handler) {
+      if (!siteApi || typeof siteApi.onArticleOpen !== 'function' || typeof handler !== 'function') return function noop() {};
+      return siteApi.onArticleOpen((payload) => {
+        handler(enhanceArticleFeaturePayload(payload));
+      });
+    },
+    onArticleClose(handler) {
+      if (!siteApi || typeof siteApi.onArticleClose !== 'function') return function noop() {};
+      return siteApi.onArticleClose(handler);
+    },
+    onHomeSlotReady(handler) {
+      if (!siteApi || typeof siteApi.onHomeSlotReady !== 'function') return function noop() {};
+      return siteApi.onHomeSlotReady(handler);
+    },
+    onAppReady(handler) {
+      if (typeof handler !== 'function') return function noop() {};
+      if (ARTICLE_FEATURE_BRIDGE.appReadyPayload) {
+        queueMicrotask(() => {
+          handler(ARTICLE_FEATURE_BRIDGE.appReadyPayload);
+        });
+        return function noop() {};
+      }
+      if (!siteApi || typeof siteApi.onAppReady !== 'function') return function noop() {};
+      return siteApi.onAppReady(handler);
+    },
+    onKeydown(handler) {
+      if (!siteApi || typeof siteApi.onKeydown !== 'function') return function noop() {};
+      return siteApi.onKeydown(handler);
+    },
+    onDirectoryFilterClick(handler) {
+      if (!siteApi || typeof siteApi.onDirectoryFilterClick !== 'function') return function noop() {};
+      return siteApi.onDirectoryFilterClick(handler);
+    },
+    unlockHiddenDirectory() {
+      return siteApi && typeof siteApi.unlockHiddenDirectory === 'function' ? siteApi.unlockHiddenDirectory() : false;
+    },
+    isHiddenDirectoryUnlocked() {
+      return siteApi && typeof siteApi.isHiddenDirectoryUnlocked === 'function' ? siteApi.isHiddenDirectoryUnlocked() : false;
+    }
+  };
+}
+
+function mountRegisteredArticleFeature(registration) {
+  if (!registration || registration.__mounted || !ARTICLE_FEATURE_BRIDGE.runtimeApi) return;
+  registration.__mounted = true;
+  try {
+    registration.setup(createArticleFeatureApi(ARTICLE_FEATURE_BRIDGE.runtimeApi, registration.slug));
+  } catch (error) {
+    registration.__mounted = false;
+    console.warn('[article-feature] setup failed:', registration.slug, error);
+  }
+}
+
+window.__registerArticleFeature = function registerArticleFeature(spec) {
+  if (!spec || typeof spec.setup !== 'function') return;
+  const slug = String(spec.slug || '').trim();
+  if (!slug) return;
+
+  const registration = {
+    slug,
+    setup: spec.setup
+  };
+  ARTICLE_FEATURE_BRIDGE.registrations.push(registration);
+  mountRegisteredArticleFeature(registration);
+};
 
 function setHiddenDirectoryController(controller) {
   HIDDEN_RUNTIME_BRIDGE.hiddenDirectoryController = controller || null;
@@ -173,10 +284,6 @@ function resolveArticleSlugFromMdPath(mdPath) {
   return pathWithoutExtension;
 }
 
-function resolveArticleSlugFromScriptPath(jsPath) {
-  return resolveArticleSlugFromMdPath(jsPath);
-}
-
 function parsePublishedAtSortValue(value) {
   const input = normalizePublishedAt(value);
   if (!input) return null;
@@ -190,6 +297,16 @@ function parsePublishedAtSortValue(value) {
   return Number.isNaN(timestamp) ? null : timestamp;
 }
 
+const ARTICLE_RENDERER = window.ArticleRenderer.createRenderer({
+  escapeHtml,
+  buildSiteUrl,
+  getSiteRootPath,
+  runtimeLinkMap: RUNTIME_LINK_MAP,
+  normalizePublishedAt,
+  parsePublishedAtSortValue,
+  compareAfterwordsByDisplayOrder
+});
+
 function compareArticlesByDisplayOrder(left, right) {
   const leftTime = parsePublishedAtSortValue(left.publishedAt);
   const rightTime = parsePublishedAtSortValue(right.publishedAt);
@@ -200,330 +317,6 @@ function compareArticlesByDisplayOrder(left, right) {
   if (leftHasTime !== rightHasTime) return leftHasTime ? -1 : 1;
 
   return String(left.title || '').localeCompare(String(right.title || ''), 'zh-CN-u-co-pinyin', { sensitivity: 'base' });
-}
-
-function normalizeWhitespace(input) {
-  return input.replace(/\s+/g, ' ').trim();
-}
-
-const BACKTICK = String.fromCharCode(96);
-const CODE_FENCE = BACKTICK.repeat(3);
-
-function stripMarkdown(input) {
-  return normalizeWhitespace(
-    input
-      .replace(new RegExp(CODE_FENCE + '[\\s\\S]*?' + CODE_FENCE, 'g'), ' ')
-      .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
-      .replace(/^#{1,6}\s+/gm, '')
-      .replace(/^>\s?/gm, '')
-      .replace(/^\s*[-*+]\s+/gm, '')
-      .replace(/^\s*\d+\.\s+/gm, '')
-      .replace(/[*_~]/g, ' ')
-      .replace(new RegExp(String.fromCharCode(96), 'g'), ' ')
-      .replace(/<[^>]+>/g, ' ')
-  );
-}
-
-function isSpecialLine(line) {
-  const trimmed = line.trim();
-  return (
-    trimmed === '' ||
-    /^#{1,6}\s+/.test(trimmed) ||
-    trimmed.startsWith(CODE_FENCE) ||
-    /^>\s?/.test(trimmed) ||
-    /^\s*[-*+]\s+/.test(trimmed) ||
-    /^\s*\d+\.\s+/.test(trimmed) ||
-    /^---+$/.test(trimmed) ||
-    /^<!--/.test(trimmed)
-  );
-}
-
-function resolveArticleSlugFromHref(href) {
-  const sanitized = new URL(href.trim(), window.location.href).pathname;
-  const siteRootPath = getSiteRootPath();
-  const normalized = siteRootPath && sanitized.startsWith(siteRootPath + '/')
-    ? sanitized.slice(siteRootPath.length)
-    : sanitized;
-  return RUNTIME_LINK_MAP[sanitized] || RUNTIME_LINK_MAP[normalized];
-}
-
-function resolveRuntimeAsset(rawHref, article) {
-  if (/^(https?:)?\/\//.test(rawHref)) return rawHref;
-  const cleanHref = rawHref.trim().replace(/\s+"[^"]*"$/, '');
-  if (cleanHref.startsWith('/')) return cleanHref;
-  const fileName = cleanHref.split('/').pop();
-  return buildSiteUrl('assets/images/articles/' + article.slug + '/' + fileName);
-}
-
-function createInlineConverter(article) {
-  return function convertInline(input) {
-    const tokens = [];
-    let output = input;
-
-    output = output.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt, rawHref) => {
-      const assetUrl = resolveRuntimeAsset(rawHref, article);
-      const token = '__HTML_TOKEN_' + tokens.length + '__';
-      tokens.push('<img class="inline-image" src="' + assetUrl + '" alt="' + escapeHtml(alt) + '">');
-      return token;
-    });
-
-    output = output.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, rawHref) => {
-      const href = rawHref.trim();
-      const slug = href.startsWith('/') ? resolveArticleSlugFromHref(href) : '';
-      const token = '__HTML_TOKEN_' + tokens.length + '__';
-      if (slug) {
-        tokens.push('<a href="#article-modal" data-article-open="' + slug + '">' + escapeHtml(text) + '</a>');
-      } else {
-        const resolved = href.startsWith('/') ? href : resolveRuntimeAsset(href, article);
-        const external = /^https?:\/\//.test(resolved);
-        const target = external ? ' target="_blank" rel="noreferrer"' : '';
-        tokens.push('<a href="' + resolved + '"' + target + '>' + escapeHtml(text) + '</a>');
-      }
-      return token;
-    });
-
-    output = escapeHtml(output);
-    output = output.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    output = output.replace(new RegExp(String.fromCharCode(96) + '([^' + String.fromCharCode(96) + ']+)' + String.fromCharCode(96), 'g'), '<code>$1</code>');
-    tokens.forEach((tokenHtml, index) => {
-      output = output.replace('__HTML_TOKEN_' + index + '__', tokenHtml);
-    });
-    return output;
-  };
-}
-
-function markdownToHtml(markdown, article) {
-  const convertInline = createInlineConverter(article);
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  const html = [];
-  let index = 0;
-
-  while (index < lines.length) {
-    const rawLine = lines[index];
-    const trimmed = rawLine.trim();
-
-    if (!trimmed) {
-      index += 1;
-      continue;
-    }
-
-    if (/^<!--/.test(trimmed)) {
-      while (index < lines.length && !/-->$/.test(lines[index].trim())) index += 1;
-      index += 1;
-      continue;
-    }
-
-    if (/^---+$/.test(trimmed)) {
-      index += 1;
-      continue;
-    }
-
-    const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
-    if (headingMatch) {
-      const level = headingMatch[1].length;
-      html.push('<h' + level + '>' + convertInline(headingMatch[2].trim()) + '</h' + level + '>');
-      index += 1;
-      continue;
-    }
-
-    const codeMatch = trimmed.startsWith(CODE_FENCE) ? [trimmed, trimmed.slice(CODE_FENCE.length)] : null;
-    if (codeMatch) {
-      const language = codeMatch[1].trim() || 'text';
-      const codeLines = [];
-      index += 1;
-      while (index < lines.length && !lines[index].trim().startsWith(CODE_FENCE)) {
-        codeLines.push(lines[index]);
-        index += 1;
-      }
-      index += 1;
-      html.push('<pre class="code-block"><code class="language-' + escapeHtml(language) + '">' + escapeHtml(codeLines.join('\n')) + '</code></pre>');
-      continue;
-    }
-
-    if (/^>\s?/.test(trimmed)) {
-      const quoteLines = [];
-      while (index < lines.length && /^>\s?/.test(lines[index].trim())) {
-        quoteLines.push(lines[index].trim().replace(/^>\s?/, ''));
-        index += 1;
-      }
-      html.push('<blockquote>' + quoteLines.map((line) => '<p>' + convertInline(line) + '</p>').join('') + '</blockquote>');
-      continue;
-    }
-
-    if (/^\s*[-*+]\s+/.test(rawLine)) {
-      const items = [];
-      while (index < lines.length && /^\s*[-*+]\s+/.test(lines[index])) {
-        items.push(lines[index].replace(/^\s*[-*+]\s+/, '').trim());
-        index += 1;
-      }
-      html.push('<ul>' + items.map((item) => '<li>' + convertInline(item) + '</li>').join('') + '</ul>');
-      continue;
-    }
-
-    if (/^\s*\d+\.\s+/.test(rawLine)) {
-      const items = [];
-      while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
-        items.push(lines[index].replace(/^\s*\d+\.\s+/, '').trim());
-        index += 1;
-      }
-      html.push('<ol>' + items.map((item) => '<li>' + convertInline(item) + '</li>').join('') + '</ol>');
-      continue;
-    }
-
-    if (article.section === 'poem') {
-      if (trimmed === '-' || trimmed === '—' || trimmed === '---') {
-        html.push('<hr class="poem-separator">');
-      } else {
-        html.push('<p class="poem-line">' + convertInline(trimmed) + '</p>');
-      }
-      index += 1;
-      continue;
-    }
-
-    const paragraphLines = [trimmed];
-    index += 1;
-    while (index < lines.length && !isSpecialLine(lines[index])) {
-      paragraphLines.push(lines[index].trim());
-      index += 1;
-    }
-    html.push('<p>' + convertInline(paragraphLines.join(' ')) + '</p>');
-  }
-
-  return html.join('\n');
-}
-
-function formatAfterwordText(markdown) {
-  return escapeHtml(String(markdown || '').trim()).replace(/\n+/g, '<br>');
-}
-
-function buildAfterwordsHtml(afterwords) {
-  if (!afterwords || !afterwords.length) return '';
-
-  const entries = afterwords
-    .slice()
-    .sort(compareAfterwordsByDisplayOrder)
-    .map((afterword) => {
-      return [
-        '<article class="article-afterword">',
-        afterword.publishedAt ? '<div class="article-afterword-time">' + escapeHtml(afterword.publishedAt) + '</div>' : '',
-        '<div class="article-afterword-content">' + formatAfterwordText(afterword.bodyMarkdown) + '</div>',
-        '</article>'
-      ].join('');
-    })
-    .join('');
-
-  return '<section class="article-afterwords">' + entries + '</section>';
-}
-
-function parseDocumentParts(markdown, fallbackTitle) {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
-  let cursor = 0;
-  while (cursor < lines.length && !lines[cursor].trim()) cursor += 1;
-
-  const titleLine = cursor < lines.length ? lines[cursor].trim() : fallbackTitle;
-  const title = titleLine.replace(/^#\s+/, '').trim() || fallbackTitle;
-  cursor += 1;
-
-  let publishedAt = '';
-  let tags = [];
-  const summaryLines = [];
-
-  while (cursor < lines.length) {
-    const trimmed = lines[cursor].trim();
-    if (!trimmed) {
-      cursor += 1;
-      continue;
-    }
-    if (!publishedAt && trimmed.startsWith('@')) {
-      publishedAt = normalizePublishedAt(trimmed.slice(1).trim());
-      cursor += 1;
-      continue;
-    }
-    if (!tags.length && trimmed.startsWith('&')) {
-      tags = trimmed.slice(1).trim().split(/\s+/).filter(Boolean);
-      cursor += 1;
-      continue;
-    }
-    if (!summaryLines.length && /^>\s?/.test(trimmed)) {
-      while (cursor < lines.length && /^>\s?/.test(lines[cursor].trim())) {
-        summaryLines.push(lines[cursor].trim().replace(/^>\s?/, ''));
-        cursor += 1;
-      }
-      continue;
-    }
-    break;
-  }
-
-  while (cursor < lines.length && !lines[cursor].trim()) cursor += 1;
-  const trailing = extractTrailingAfterwords(lines.slice(cursor));
-  const bodyMarkdown = trailing.bodyLines.join('\n').trim();
-  const summary = normalizeWhitespace(summaryLines.join(' '));
-  return { title, publishedAt, tags, summary, bodyMarkdown, afterwords: trailing.afterwords };
-}
-
-function extractInlineAfterwordDate(line) {
-  const input = String(line || '').trim();
-  if (!input) return { text: '', publishedAt: '' };
-  const matched = input.match(/^(.*?)(?:\s+[&@](.+))$/);
-  if (!matched) return { text: input, publishedAt: '' };
-  const normalized = normalizePublishedAt(matched[2].trim());
-  if (parsePublishedAtSortValue(normalized) === null) return { text: input, publishedAt: '' };
-  return { text: matched[1].trim(), publishedAt: normalized };
-}
-
-function extractTrailingAfterwords(lines) {
-  let scan = lines.length - 1;
-  while (scan >= 0 && !lines[scan].trim()) scan -= 1;
-  if (scan < 0) return { bodyLines: lines, afterwords: [] };
-
-  const afterwords = [];
-
-  while (scan >= 0) {
-    let cursor = scan;
-    let publishedAt = '';
-
-    if (/^[&@]\s*/.test(lines[cursor].trim())) {
-      const normalized = normalizePublishedAt(lines[cursor].trim().replace(/^[&@]\s*/, ''));
-      if (parsePublishedAtSortValue(normalized) === null) break;
-      publishedAt = normalized;
-      cursor -= 1;
-      while (cursor >= 0 && !lines[cursor].trim()) cursor -= 1;
-    }
-
-    if (cursor < 0 || !/^>\s?/.test(lines[cursor].trim())) break;
-
-    const quoteLines = [];
-    while (cursor >= 0 && /^>\s?/.test(lines[cursor].trim())) {
-      quoteLines.unshift(lines[cursor].trim().replace(/^>\s?/, ''));
-      cursor -= 1;
-    }
-
-    if (!publishedAt && quoteLines.length) {
-      const inline = extractInlineAfterwordDate(quoteLines[quoteLines.length - 1]);
-      quoteLines[quoteLines.length - 1] = inline.text;
-      publishedAt = inline.publishedAt;
-    }
-
-    const bodyMarkdown = quoteLines.join('\n').trim();
-    if (!bodyMarkdown) break;
-
-    afterwords.push({
-      bodyMarkdown,
-      publishedAt,
-      sourceIndex: afterwords.length
-    });
-
-    scan = cursor;
-    while (scan >= 0 && !lines[scan].trim()) scan -= 1;
-  }
-
-  if (!afterwords.length) return { bodyLines: lines, afterwords: [] };
-
-  return {
-    bodyLines: lines.slice(0, scan + 1),
-    afterwords: afterwords.reverse()
-  };
 }
 
 function buildCard(article) {
@@ -546,19 +339,7 @@ function buildCard(article) {
 }
 
 function parseRuntimeArticle(entry, markdown) {
-  const parsed = parseDocumentParts(markdown, entry.slug);
-  const inferredSection = inferArticleSection(entry.section, parsed.tags);
-  const articleContext = { slug: entry.slug, section: inferredSection };
-  return {
-    slug: entry.slug,
-    section: inferredSection,
-    title: parsed.title,
-    tags: parsed.tags,
-    summary: parsed.summary,
-    publishedAt: parsed.publishedAt,
-    bodyText: stripMarkdown(parsed.bodyMarkdown),
-    html: markdownToHtml(parsed.bodyMarkdown, articleContext) + buildAfterwordsHtml(parsed.afterwords)
-  };
+  return ARTICLE_RENDERER.parseRuntimeArticle(entry, markdown, inferArticleSection);
 }
 
 function inferArticleSection(section, tags) {
@@ -622,7 +403,6 @@ async function discoverArticleEntriesFromDirectory() {
   const rootPath = getSiteRootPath() + '/articles/';
   const visitedDirs = new Set();
   const discoveredArticles = new Map();
-  const discoveredScripts = new Map();
 
   async function visit(dirUrl) {
     const absoluteDirUrl = new URL(dirUrl, window.location.href).toString();
@@ -655,18 +435,6 @@ async function discoverArticleEntriesFromDirectory() {
         return;
       }
 
-      if (/.js$/i.test(resolvedUrl.pathname)) {
-        const jsPath = decodeURIComponent(resolvedUrl.pathname.slice(rootPath.length));
-        if (!jsPath.startsWith(HIDDEN_ARTICLE_DIR)) return;
-        const slug = resolveArticleSlugFromScriptPath(jsPath);
-        discoveredScripts.set(slug, {
-          slug,
-          jsPath,
-          jsUrl: buildSiteUrl('articles/' + jsPath)
-        });
-        return;
-      }
-
       if (resolvedUrl.pathname.endsWith('/')) nestedVisits.push(visit(resolvedUrl.toString()));
     });
 
@@ -676,11 +444,10 @@ async function discoverArticleEntriesFromDirectory() {
   try {
     await visit(buildSiteUrl('articles/'));
     return {
-      articles: Array.from(discoveredArticles.values()),
-      hiddenScripts: Array.from(discoveredScripts.values())
+      articles: Array.from(discoveredArticles.values())
     };
   } catch (error) {
-    return { articles: [], hiddenScripts: [] };
+    return { articles: [] };
   }
 }
 
@@ -727,7 +494,6 @@ async function discoverSiteEntriesFromGitHub() {
     const articlePrefix = docsPrefix + 'articles/';
     const algorithmPrefix = docsPrefix + 'assets/algorithms/';
     const articles = new Map();
-    const hiddenScripts = new Map();
     const algorithms = new Set();
 
     tree.forEach((entry) => {
@@ -746,17 +512,6 @@ async function discoverSiteEntriesFromGitHub() {
         }
         return;
       }
-      if (entryPath.startsWith(articlePrefix) && /\.js$/i.test(entryPath)) {
-        const jsPath = entryPath.slice(articlePrefix.length);
-        if (!jsPath.startsWith(HIDDEN_ARTICLE_DIR)) return;
-        const slug = resolveArticleSlugFromScriptPath(jsPath);
-        hiddenScripts.set(slug, {
-          slug,
-          jsPath,
-          jsUrl: buildSiteUrl('articles/' + jsPath)
-        });
-        return;
-      }
       if (entryPath.startsWith(algorithmPrefix) && /\.js$/i.test(entryPath) && !/\.worker\.js$/i.test(entryPath)) {
         algorithms.add(entryPath.slice(algorithmPrefix.length));
       }
@@ -764,21 +519,19 @@ async function discoverSiteEntriesFromGitHub() {
 
     return {
       articles: Array.from(articles.values()),
-      hiddenScripts: Array.from(hiddenScripts.values()),
       algorithms: Array.from(algorithms).sort()
     };
   } catch (error) {
-    return { articles: [], hiddenScripts: [], algorithms: [] };
+    return { articles: [], algorithms: [] };
   }
 }
 
 async function discoverArticleEntries() {
   const local = await discoverArticleEntriesFromDirectory();
-  if (local.articles.length || local.hiddenScripts.length) return local;
+  if (local.articles.length) return local;
   const remote = await discoverSiteEntriesFromGitHub();
   return {
-    articles: remote.articles,
-    hiddenScripts: remote.hiddenScripts
+    articles: remote.articles
   };
 }
 
@@ -789,8 +542,10 @@ async function discoverAlgorithmEntries() {
   return remote.algorithms || [];
 }
 
-async function discoverFeatureEntriesFromDirectory() {
-  const rootPath = getSiteRootPath() + '/assets/features/';
+async function discoverScriptEntriesFromDirectory(rootRelativePath) {
+  const rootUrl = buildSiteUrl(rootRelativePath);
+  const rootPath = new URL(rootUrl, window.location.href).pathname;
+  const normalizedRoot = normalizeArticleMdPath(rootRelativePath);
   const visitedDirs = new Set();
   const discoveredScripts = new Set();
 
@@ -814,7 +569,7 @@ async function discoverFeatureEntriesFromDirectory() {
 
       if (/\.js$/i.test(resolvedUrl.pathname) && !/\.worker\.js$/i.test(resolvedUrl.pathname)) {
         const scriptPath = decodeURIComponent(resolvedUrl.pathname.slice(rootPath.length));
-        if (scriptPath) discoveredScripts.add(scriptPath);
+        if (scriptPath) discoveredScripts.add(normalizedRoot + scriptPath);
         return;
       }
 
@@ -825,21 +580,37 @@ async function discoverFeatureEntriesFromDirectory() {
   }
 
   try {
-    await visit(buildSiteUrl('assets/features/'));
-    return Array.from(discoveredScripts).sort();
+    await visit(rootUrl);
+    return Array.from(discoveredScripts);
   } catch (error) {
     return [];
   }
 }
 
+async function discoverFeatureEntriesFromDirectory() {
+  const entries = await Promise.all([
+    discoverScriptEntriesFromDirectory('assets/features/'),
+    discoverScriptEntriesFromDirectory('articles/')
+  ]);
+  return Array.from(new Set(entries.flat())).sort();
+}
+
 async function discoverFeatureEntries() {
   const local = await discoverFeatureEntriesFromDirectory();
   if (local.length) return local;
-  const docsPrefix = normalizeArticleMdPath(SITE_GITHUB_SOURCE.docsDir) + '/assets/features/';
+  const docsRoot = normalizeArticleMdPath(SITE_GITHUB_SOURCE.docsDir) + '/';
+  const prefixes = [docsRoot + 'assets/features/', docsRoot + 'articles/'];
   const tree = await fetchGitHubTree().catch(() => []);
   return tree
-    .filter((entry) => entry && entry.type === 'blob' && entry.path && entry.path.startsWith(docsPrefix) && /\.js$/i.test(entry.path) && !/\.worker\.js$/i.test(entry.path))
-    .map((entry) => entry.path.slice(docsPrefix.length))
+    .filter((entry) => {
+      return entry &&
+        entry.type === 'blob' &&
+        entry.path &&
+        prefixes.some((prefix) => entry.path.startsWith(prefix)) &&
+        /\.js$/i.test(entry.path) &&
+        !/\.worker\.js$/i.test(entry.path);
+    })
+    .map((entry) => entry.path.slice(docsRoot.length))
     .sort();
 }
 
@@ -851,16 +622,8 @@ async function loadRuntimeArticles() {
       slug: entry.slug,
       section: entry.section || (isHiddenArticleEntry(entry) ? 'hidden' : 'article'),
       mdPath: entry.mdPath,
-      mdUrl: entry.mdUrl || buildSiteUrl('articles/' + entry.mdPath),
-      jsPath: '',
-      jsUrl: ''
+      mdUrl: entry.mdUrl || buildSiteUrl('articles/' + entry.mdPath)
     });
-  });
-  discoveredResources.hiddenScripts.forEach((script) => {
-    const previous = manifestMap.get(script.slug);
-    if (!previous) return;
-    previous.jsPath = script.jsPath;
-    previous.jsUrl = script.jsUrl;
   });
 
   const entries = Array.from(manifestMap.values());
@@ -882,14 +645,7 @@ async function loadRuntimeArticles() {
   const hiddenSlugs = new Set(HOME_SLOT_SLUGS);
   const hiddenArticles = loaded
     .filter((item) => item.section === 'hidden')
-    .map((item) => {
-      const matched = manifestMap.get(item.slug);
-      return {
-        ...item,
-        jsPath: matched && matched.jsPath ? matched.jsPath : '',
-        jsUrl: matched && matched.jsUrl ? matched.jsUrl : ''
-      };
-    });
+    .map((item) => ({ ...item }));
   rebuildRuntimeLinkMap(loaded.map((item) => {
     const matched = manifestMap.get(item.slug);
     return {
@@ -901,7 +657,6 @@ async function loadRuntimeArticles() {
   return {
     homeSlots,
     hiddenArticles,
-    hiddenScripts: discoveredResources.hiddenScripts.slice(),
     articles: loaded.filter((item) => !hiddenSlugs.has(item.slug) && item.section !== 'hidden')
   };
 }
@@ -1201,16 +956,17 @@ async function loadAlgorithmScripts() {
 }
 
 function ensureSiteFeatureRegistry() {
-  if (!Array.isArray(window.__SITE_RUNTIME_FEATURES__)) {
-    window.__SITE_RUNTIME_FEATURES__ = [];
+  const root = /** @type {any} */ (window);
+  if (!Array.isArray(root.__SITE_RUNTIME_FEATURES__)) {
+    root.__SITE_RUNTIME_FEATURES__ = [];
   }
 
-  window.__registerSiteFeature = (factory) => {
+  root.__registerSiteFeature = (factory) => {
     if (typeof factory !== 'function') return;
-    window.__SITE_RUNTIME_FEATURES__.push(factory);
+    root.__SITE_RUNTIME_FEATURES__.push(factory);
   };
 
-  return window.__SITE_RUNTIME_FEATURES__;
+  return root.__SITE_RUNTIME_FEATURES__;
 }
 
 function loadFeatureScript(scriptPath) {
@@ -1235,7 +991,7 @@ function loadFeatureScript(scriptPath) {
     const script = document.createElement('script');
     script.async = false;
     script.dataset.featurePath = normalizedPath;
-    const scriptUrl = new URL(buildSiteUrl('assets/features/' + normalizedPath), window.location.href);
+    const scriptUrl = new URL(buildSiteUrl(normalizedPath), window.location.href);
     scriptUrl.searchParams.set('_', String(Date.now()));
     script.src = scriptUrl.toString();
     script.onload = () => {
@@ -1299,12 +1055,16 @@ function createSiteFeatureApi(runtimeData, controls) {
 function initSiteFeatures(runtimeData, controls) {
   const factories = ensureSiteFeatureRegistry();
   const api = createSiteFeatureApi(runtimeData, controls);
+  ARTICLE_FEATURE_BRIDGE.runtimeApi = api;
   factories.forEach((factory) => {
     try {
       factory(api);
     } catch (error) {
       console.warn('[site-feature] setup failed:', error);
     }
+  });
+  ARTICLE_FEATURE_BRIDGE.registrations.forEach((registration) => {
+    mountRegisteredArticleFeature(registration);
   });
 }
 
@@ -1347,11 +1107,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     initSiteFeatures(runtimeData, modalControls);
     initHomeSlots(runtimeData);
     L && await L.update(90);
-    emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.appReadyListeners, {
+    ARTICLE_FEATURE_BRIDGE.appReadyPayload = {
       runtimeData,
       openArticle: modalControls.openArticle,
       closeArticle: modalControls.closeArticle
-    });
+    };
+    emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.appReadyListeners, ARTICLE_FEATURE_BRIDGE.appReadyPayload);
   } catch (error) {
     console.error(error);
     showRuntimeLoadError(error);

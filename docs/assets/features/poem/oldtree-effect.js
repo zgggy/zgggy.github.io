@@ -1,5 +1,6 @@
-window.__registerSiteFeature(function(api) {
-  var SLUG = 'poem/旧树';
+window.__registerArticleFeature({
+  slug: 'poem/旧树',
+  setup(api) {
   var MAX_SKEW = 8;
   var SKEW_DELAY = 10000;
   var SKEW_DURATION = 30000;
@@ -10,9 +11,8 @@ window.__registerSiteFeature(function(api) {
     cleanupFns = [];
   }
 
-  api.onArticleOpen(function(payload) {
+  api.onOpen(function() {
     cleanup();
-    if (payload.slug !== SLUG) return;
 
     var modal = document.getElementById('article-modal');
     var dialog = modal ? modal.querySelector('.article-modal-dialog') : null;
@@ -34,5 +34,6 @@ window.__registerSiteFeature(function(api) {
     });
   });
 
-  api.onArticleClose(function() { cleanup(); });
+  api.onClose(function() { cleanup(); });
+  }
 });

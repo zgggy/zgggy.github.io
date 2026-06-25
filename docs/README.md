@@ -82,23 +82,33 @@ window.__registerSiteFeature((api) => {
 });
 ```
 
-#### 3. 隐藏文章触发器 (`articles/hidden/*.js`)
+#### 3. 文章附属脚本 (`articles/**/*.js`)
 
-通过 `window.__registerHiddenArticleTrigger` 注册，工厂函数接收触发器 API。
+文章 sidecar 会和站点功能脚本一起被统一扫描加载，不再要求脚本文件名和文章文件名一致。
+
+每个脚本都必须显式声明自己要挂到哪篇文章：
 
 ```js
-window.__registerHiddenArticleTrigger((trigger) => {
-  // trigger.slug       — 当前隐藏文章的 slug
-  // trigger.article    — 文章对象
-  // trigger.open()     — 打开本文章
-  // trigger.openArticle(slug) — 打开任意文章
-  // trigger.onArticleOpen(handler)
-  // trigger.onArticleClose(handler)
-  // trigger.onKeydown(handler)
-  // trigger.onDirectoryFilterClick(handler)
-  // trigger.unlockHiddenDirectory()
+window.__registerArticleFeature({
+  slug: 'poem/镜花',
+  setup(api) {
+    // api.slug              — 当前目标文章 slug
+    // api.article / api.getArticle() — 当前文章对象
+    // api.open()            — 打开当前文章
+    // api.openArticle(slug) — 打开任意文章
+    // api.closeArticle()    — 关闭文章弹窗
+    // api.onOpen(handler)   — 当前文章打开时触发
+    // api.onClose(handler)  — 当前文章关闭时触发
+    // api.onArticleOpen(handler)
+    // api.onArticleClose(handler)
+    // api.onKeydown(handler)
+    // api.onDirectoryFilterClick(handler)
+    // api.unlockHiddenDirectory()
+  }
 });
 ```
+
+旧的 `window.__registerHiddenArticleTrigger` 已废弃，不再作为 hidden 文章的专用加载方式。
 
 ### 文章 Markdown 格式
 

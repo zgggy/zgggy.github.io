@@ -1,10 +1,13 @@
-window.__registerHiddenArticleTrigger?.(({ onKeydown, open }) => {
+window.__registerArticleFeature({
+  slug: 'hidden/game',
+  setup(api) {
   const utils = window.__hiddenFeatureUtils__;
   if (!utils || typeof utils.bindKeySequence !== 'function') return;
 
   utils.bindKeySequence(
-    onKeydown,
+    api.onKeydown,
     ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'],
-    open
+    () => api.open()
   );
+  }
 });

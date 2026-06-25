@@ -1,5 +1,6 @@
-window.__registerSiteFeature(function(api) {
-  var SLUG = 'poem/小羊';
+window.__registerArticleFeature({
+  slug: 'poem/小羊',
+  setup(api) {
   var GRASS_INTERVAL = 10000;
   var MAX_GRASS = 3;
   var MIN_GRASS_DISTANCE = 0.1;
@@ -366,9 +367,8 @@ window.__registerSiteFeature(function(api) {
     }
   }
 
-  api.onArticleOpen(function(payload) {
+  api.onOpen(function() {
     cleanup();
-    if (payload.slug !== SLUG) return;
 
     createOverlay();
     if (!overlay) return;
@@ -383,5 +383,6 @@ window.__registerSiteFeature(function(api) {
     scheduleNextAction();
   });
 
-  api.onArticleClose(function() { cleanup(); });
+  api.onClose(function() { cleanup(); });
+  }
 });

@@ -271,9 +271,6 @@ class ClusteringVisualizer {
         this.activeNeighborSet = new Set();
         this.expansionQueue = [];
         this.queuedIndices.clear();
-        // #region debug-point A:transition-start
-        fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"clustering-animation-lag",runId:"post-fix",hypothesisId:"A",location:"clustering.js:prepareTransitionToNewLayout",msg:"[DEBUG] transition-start",data:{pointCount:this.points.length,rippleCount:this.ripples.length,activeNeighborCount:this.activeNeighborSet.size,queuedCount:this.queuedIndices.size,transitionDuration:this.transitionDuration,completePause:this.completePause},ts:Date.now()})}).catch(()=>{});
-        // #endregion
     }
 
     updateTransition(now) {
@@ -286,13 +283,6 @@ class ClusteringVisualizer {
             point.x = point.fromX + (point.targetX - point.fromX) * eased;
             point.y = point.fromY + (point.targetY - point.fromY) * eased;
         }
-
-        // #region debug-point A:transition-sample
-        if (!this._dbgLastTransitionLogAt || now - this._dbgLastTransitionLogAt >= 180) {
-            this._dbgLastTransitionLogAt = now;
-            fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"clustering-animation-lag",runId:"post-fix",hypothesisId:"A",location:"clustering.js:updateTransition",msg:"[DEBUG] transition-sample",data:{elapsed:Math.round(elapsed),rawProgress:Number(rawProgress.toFixed(3)),eased:Number(eased.toFixed(3)),rippleCount:this.ripples.length,activeNeighborCount:this.activeNeighborSet.size,queuedCount:this.queuedIndices.size},ts:Date.now()})}).catch(()=>{});
-        }
-        // #endregion
 
         if (rawProgress >= 1) {
             for (const point of this.points) {
@@ -678,7 +668,6 @@ class ClusteringVisualizer {
     // 绘制
     draw() {
         const c = window.getAlgoColors ? window.getAlgoColors() : { bg: '#f7f7f7' };
-        const drawStart = performance.now();
         this.ctx.fillStyle = c.bg;
         this.ctx.fillRect(0, 0, this.width, this.height);
 
@@ -691,22 +680,6 @@ class ClusteringVisualizer {
             const size = this.getPointTargetSize(i, point);
             this.drawPoint(point, size, clusterType, i);
         }
-
-        // #region debug-point E:draw-sample
-        const drawCost = performance.now() - drawStart;
-        if (!this._dbgLastDrawLogAt || this.motionTime - this._dbgLastDrawLogAt >= 220) {
-            this._dbgLastDrawLogAt = this.motionTime;
-            let maxLight = 0;
-            let avgLight = 0;
-            for (let i = 0; i < this.points.length; i++) {
-                const light = Number(this.points[i] && typeof this.points[i].currentLight === 'number' ? this.points[i].currentLight : 0);
-                maxLight = Math.max(maxLight, light);
-                avgLight += light;
-            }
-            avgLight = this.points.length ? avgLight / this.points.length : 0;
-            fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"clustering-animation-lag",runId:"post-fix",hypothesisId:"E",location:"clustering.js:draw",msg:"[DEBUG] draw-sample",data:{playState:this.playState,drawCostMs:Number(drawCost.toFixed(3)),pointCount:this.points.length,rippleCount:this.ripples.length,maxLight:Number(maxLight.toFixed(3)),avgLight:Number(avgLight.toFixed(3)),transitionProgress:Number(this.transitionProgress.toFixed(3))},ts:Date.now()})}).catch(()=>{});
-        }
-        // #endregion
     }
 
     // 绘制点
@@ -718,13 +691,6 @@ class ClusteringVisualizer {
         point.currentSize += (size - point.currentSize) * 0.24;
         point.currentLight += (targetLight - point.currentLight) * (this.playState === 'transition' ? 0.28 : 0.16);
         const visual = this.getClusterVisual(clusterType);
-
-        // #region debug-point B:light-sample
-        if (index === 0 && this.playState === 'transition' && (!this._dbgLastLightLogAt || this.motionTime - this._dbgLastLightLogAt >= 180)) {
-            this._dbgLastLightLogAt = this.motionTime;
-            fetch("http://127.0.0.1:7778/event",{method:"POST",body:JSON.stringify({sessionId:"clustering-animation-lag",runId:"post-fix",hypothesisId:"B",location:"clustering.js:drawPoint",msg:"[DEBUG] light-sample",data:{index,clusterType:String(clusterType),targetLight:Number(targetLight.toFixed(3)),currentLight:Number(point.currentLight.toFixed(3)),currentSize:Number(point.currentSize.toFixed(3)),transitionProgress:Number(this.transitionProgress.toFixed(3))},ts:Date.now()})}).catch(()=>{});
-        }
-        // #endregion
 
         if (this.playState === 'transition') {
             const idleVisual = this.getClusterVisual('unassigned');

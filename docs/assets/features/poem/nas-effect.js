@@ -1,5 +1,6 @@
-window.__registerSiteFeature(function(api) {
-  var NAS_SLUG = 'poem/nas';
+window.__registerArticleFeature({
+  slug: 'poem/nas',
+  setup(api) {
   var TICK_INTERVAL = 2600;
   var JITTER_DURATION = 300;
   var JITTER_MIN_DELAY = 1000;
@@ -86,9 +87,8 @@ window.__registerSiteFeature(function(api) {
     cleanupFns.push(function() { clearTimeout(timer); });
   }
 
-  api.onArticleOpen(function(payload) {
+  api.onOpen(function() {
     cleanup();
-    if (payload.slug !== NAS_SLUG) return;
 
     var modal = document.getElementById('article-modal');
     var meta = document.getElementById('article-modal-meta');
@@ -138,5 +138,6 @@ window.__registerSiteFeature(function(api) {
     });
   });
 
-  api.onArticleClose(function() { cleanup(); });
+  api.onClose(function() { cleanup(); });
+  }
 });
