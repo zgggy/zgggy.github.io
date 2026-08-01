@@ -323,7 +323,7 @@ function buildCard(article) {
   const category = getArticleCategory(article);
   const tagText = getArticleTagText(article);
   const displayLabel = tagText || category;
-    const metaParts = [
+  const metaParts = [
     displayLabel ? '<span class="meta-tags">' + escapeHtml(displayLabel) + '</span>' : '',
     article.publishedAt ? '<span class="meta-time">' + escapeHtml(article.publishedAt) + '</span>' : ''
   ].filter(Boolean).join('');
@@ -719,6 +719,7 @@ function initArticleModal(runtimeData) {
     body.className = 'article-modal-body article-body' + (article.section === 'poem' ? ' poem-body' + getPoemBodyVariantClass(article) : '') + (article.section === 'essay' ? ' essay-body' : '');
     body.innerHTML = article.html;
     modal.scrollTop = 0;
+    modal.classList.remove('is-closing');
     modal.classList.add('active');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('has-modal-open');
@@ -731,17 +732,28 @@ function initArticleModal(runtimeData) {
   function closeArticle() {
     const closedSlug = currentArticleSlug;
     const closedArticle = closedSlug ? articleMap.get(closedSlug) : null;
+    if (!modal.classList.contains('active')) return;
     modal.classList.remove('active');
+    modal.classList.add('is-closing');
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('has-modal-open');
     currentArticleSlug = '';
     if (closedSlug) emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.articleCloseListeners, { slug: closedSlug, article: closedArticle, openArticle });
   }
 
+  modal.addEventListener('transitionend', (event) => {
+    if (event.target !== modal || event.propertyName !== 'opacity') return;
+    if (!modal.classList.contains('active')) {
+      modal.classList.remove('is-closing');
+      modal.classList.remove('is-from-list');
+    }
+  });
+
   document.addEventListener('click', (event) => {
     const trigger = event.target.closest('[data-article-open]');
     if (trigger) {
       event.preventDefault();
+      modal.classList.add('is-from-list');
       openArticle(trigger.dataset.articleOpen);
       return;
     }
@@ -781,6 +793,21 @@ function initHomeDirectory(runtimeData) {
   }));
   let allFilterClickCount = 0;
   let hiddenUnlocked = false;
+  let renderTransitionFrame = 0;
+  let renderTransitionTimer = 0;
+
+  function clearRenderTransitionState() {
+    if (renderTransitionFrame) {
+      cancelAnimationFrame(renderTransitionFrame);
+      renderTransitionFrame = 0;
+    }
+    if (renderTransitionTimer) {
+      clearTimeout(renderTransitionTimer);
+      renderTransitionTimer = 0;
+    }
+    directory.classList.remove('is-switching-out');
+    directory.classList.remove('is-switching-in');
+  }
 
   function getDirectoryCategory(article) {
     if (article && article.__directoryCategory) return article.__directoryCategory;
@@ -821,10 +848,10 @@ function initHomeDirectory(runtimeData) {
 
     filterContainer.innerHTML = filterItems.map((item) => {
       return [
-        '<a class="filter-button' + (item.key === activeSection ? ' is-active' : '') + '" href="#directory-title" data-filter="' + escapeHtml(item.key) + '">',
+        '<button class="filter-button' + (item.key === activeSection ? ' is-active' : '') + '" type="button" data-filter="' + escapeHtml(item.key) + '">',
         '  <span>' + item.label + '</span>',
         '  <small>' + item.description + '</small>',
-        '</a>'
+        '</button>'
       ].join('');
     }).join('');
 
@@ -845,18 +872,51 @@ function initHomeDirectory(runtimeData) {
         });
         activeSection = filterKey;
         renderFilters();
-        render();
+        render(true);
       });
     });
   }
 
-  function render() {
+  function render(animated) {
     const filtered = getVisibleArticles()
       .filter((article) => (activeSection === 'all' ? true : getDirectoryCategory(article) === activeSection))
       .slice()
       .sort(compareArticlesByDisplayOrder);
 
-    directory.innerHTML = filtered.map(buildCard).join('');
+    const markup = filtered.map((article) => buildCard(article)).join('');
+
+    function emitDirectoryRendered() {
+      window.dispatchEvent(new CustomEvent('site:directory-rendered', {
+        detail: {
+          activeSection,
+          view: 'list',
+          count: filtered.length
+        }
+      }));
+    }
+
+    if (!animated) {
+      clearRenderTransitionState();
+      directory.innerHTML = markup;
+      emitDirectoryRendered();
+      return;
+    }
+
+    clearRenderTransitionState();
+    directory.classList.add('is-switching-out');
+    renderTransitionFrame = requestAnimationFrame(() => {
+      renderTransitionFrame = requestAnimationFrame(() => {
+        directory.innerHTML = markup;
+        directory.classList.remove('is-switching-out');
+        directory.classList.add('is-switching-in');
+        emitDirectoryRendered();
+        renderTransitionTimer = window.setTimeout(() => {
+          directory.classList.remove('is-switching-in');
+          renderTransitionTimer = 0;
+        }, 280);
+        renderTransitionFrame = 0;
+      });
+    });
   }
   renderFilters();
   render();

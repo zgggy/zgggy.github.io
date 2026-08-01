@@ -4,6 +4,7 @@ window.__registerSiteFeature?.(({ onAppReady, onDirectoryFilterClick }) => {
   let spacerResetTimer = null;
   let correctionTimers = [];
   let directoryAutoScrollActive = false;
+  let pendingDirectoryAlign = false;
 
   function getScrollSpacer() {
     return document.getElementById('directory-scroll-spacer');
@@ -56,6 +57,18 @@ window.__registerSiteFeature?.(({ onAppReady, onDirectoryFilterClick }) => {
     return document.querySelector('.directory-main') || document.querySelector('.directory-layout');
   }
 
+  function preserveScrollPositionCapacity() {
+    const spacer = getScrollSpacer();
+    if (!spacer) return;
+    const currentSpacerHeight = spacer.offsetHeight;
+    const baseScrollHeight = document.documentElement.scrollHeight - currentSpacerHeight;
+    const minRequiredHeight = window.scrollY + window.innerHeight + 1;
+    const requiredExtraSpace = Math.max(0, minRequiredHeight - baseScrollHeight);
+    if (requiredExtraSpace > currentSpacerHeight) {
+      spacer.style.height = requiredExtraSpace + 'px';
+    }
+  }
+
   function alignDirectoryIntoView(behavior) {
     const target = getDirectoryTarget();
     if (!target) return;
@@ -77,18 +90,11 @@ window.__registerSiteFeature?.(({ onAppReady, onDirectoryFilterClick }) => {
     lockSpacerReset();
     requestAnimationFrame(() => {
       alignDirectoryIntoView('smooth');
-      correctionTimers = [220, 420, 680].map((delay) =>
-        window.setTimeout(() => {
-          if (!directoryAutoScrollActive) return;
-          lockSpacerReset();
-          alignDirectoryIntoView('auto');
-        }, delay)
-      );
       const releaseTimer = window.setTimeout(() => {
         directoryAutoScrollActive = false;
         correctionTimers = correctionTimers.filter((timerId) => timerId !== releaseTimer);
-      }, 760);
-      correctionTimers.push(releaseTimer);
+      }, 520);
+      correctionTimers = [releaseTimer];
     });
   }
 
@@ -133,9 +139,18 @@ window.__registerSiteFeature?.(({ onAppReady, onDirectoryFilterClick }) => {
         }
       }
     });
+
+    window.addEventListener('site:directory-rendered', () => {
+      if (!pendingDirectoryAlign) return;
+      pendingDirectoryAlign = false;
+      scrollDirectoryIntoView();
+    });
   });
 
   onDirectoryFilterClick(() => {
-    scrollDirectoryIntoView();
+    pendingDirectoryAlign = true;
+    lockSpacerReset();
+    preserveScrollPositionCapacity();
   });
+
 });
