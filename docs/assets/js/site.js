@@ -472,6 +472,31 @@ async function discoverAlgorithmEntriesFromDirectory() {
 
 const GITHUB_TREE_CACHE_KEY = 'site:github-tree-v1';
 const GITHUB_TREE_WARM_TTL = 10 * 60 * 1000;
+let GITHUB_TREE_SHA_MAP = null;
+
+function setTreeShaMap(tree) {
+  const map = new Map();
+  (tree || []).forEach((entry) => {
+    if (entry && entry.path && entry.sha) map.set(String(entry.path), String(entry.sha));
+  });
+  GITHUB_TREE_SHA_MAP = map;
+}
+
+function getAssetVersionForPath(repoRelativePath) {
+  if (GITHUB_TREE_SHA_MAP) {
+    const sha = GITHUB_TREE_SHA_MAP.get(String(repoRelativePath));
+    if (sha) return sha;
+  }
+  return RUNTIME_ASSET_VERSION || '';
+}
+
+function appendAssetVersion(url, repoRelativePath) {
+  const version = getAssetVersionForPath(repoRelativePath);
+  if (!version) return url;
+  const versioned = new URL(String(url), window.location.href);
+  versioned.searchParams.set('v', version);
+  return versioned.toString();
+}
 
 function readGitHubTreeCache() {
   try {
@@ -482,12 +507,17 @@ function readGitHubTreeCache() {
   }
 }
 
-function writeGitHubTreeCache(etag, treeSha, tree) {
+function writeGitHubTreeCache(etag, tree) {
   try {
-    localStorage.setItem(GITHUB_TREE_CACHE_KEY, JSON.stringify({ etag: etag || '', treeSha: treeSha || '', tree, savedAt: Date.now() }));
+    localStorage.setItem(GITHUB_TREE_CACHE_KEY, JSON.stringify({ etag: etag || '', tree, savedAt: Date.now() }));
   } catch (error) {
     /* localStorage 不可用时静默降级 */
   }
+}
+
+function adoptTree(tree) {
+  setTreeShaMap(tree);
+  return tree;
 }
 
 function appendAssetVersion(url) {
@@ -505,10 +535,9 @@ function fetchGitHubTree() {
       '/git/trees/' + encodeURIComponent(SITE_GITHUB_SOURCE.branch) + '?recursive=1';
     githubTreeCachePromise = (async () => {
       const cached = readGitHubTreeCache();
-      if (cached) RUNTIME_ASSET_VERSION = String(cached.treeSha || '');
       // 与 Pages CDN 的 max-age 对齐：10 分钟内直接信任本地树，省一次 API 往返
-      if (cached && cached.treeSha && Date.now() - (cached.savedAt || 0) < GITHUB_TREE_WARM_TTL) {
-        return cached.tree;
+      if (cached && Date.now() - (cached.savedAt || 0) < GITHUB_TREE_WARM_TTL) {
+        return adoptTree(cached.tree);
       }
       const headers = { Accept: 'application/vnd.github+json' };
       if (cached && cached.etag) headers['If-None-Match'] = cached.etag;
@@ -516,24 +545,24 @@ function fetchGitHubTree() {
       try {
         response = await fetch(apiUrl, { headers, cache: 'no-store' });
       } catch (error) {
-        if (cached) return cached.tree;
+        if (cached) return adoptTree(cached.tree);
         throw error;
       }
-      // 304 不计入 GitHub API 限额，等于免费续期
+      // 304 不计入 GitHub API 限额，等于免费续期；blob SHA 仍在缓存树里，版本号不受影响
       if (response.status === 304 && cached) {
-        writeGitHubTreeCache(cached.etag, cached.treeSha, cached.tree);
-        return cached.tree;
+        writeGitHubTreeCache(cached.etag, cached.tree);
+        return adoptTree(cached.tree);
       }
       if (!response.ok) {
         // 配额耗尽或接口异常时，用旧树兜底，保证文章区不空白
-        if (cached) return cached.tree;
+        if (cached) return adoptTree(cached.tree);
         throw new Error('Failed to fetch GitHub tree: ' + response.status);
       }
       const payload = await response.json();
       const tree = Array.isArray(payload.tree) ? payload.tree : [];
       RUNTIME_ASSET_VERSION = String(payload.sha || '');
-      writeGitHubTreeCache(response.headers.get('ETag'), payload.sha, tree);
-      return tree;
+      writeGitHubTreeCache(response.headers.get('ETag'), tree);
+      return adoptTree(tree);
     })();
   }
   return githubTreeCachePromise;
@@ -559,8 +588,8 @@ async function discoverSiteEntriesFromGitHub() {
             slug,
             section: inferSectionFromMdPath(mdPath),
             mdPath,
-            mdUrl: appendAssetVersion(buildSiteUrl('articles/' + mdPath)),
-            immutable: Boolean(RUNTIME_ASSET_VERSION)
+            mdUrl: appendAssetVersion(buildSiteUrl('articles/' + mdPath), entryPath),
+            immutable: Boolean(getAssetVersionForPath(entryPath))
           });
         }
         return;
@@ -1073,8 +1102,9 @@ function loadAlgorithmScript(scriptPath) {
     script.async = false;
     script.dataset.algorithmPath = normalizedPath;
     const scriptUrl = new URL(buildSiteUrl('assets/algorithms/' + normalizedPath), window.location.href);
-    if (RUNTIME_ASSET_VERSION) {
-      scriptUrl.searchParams.set('v', RUNTIME_ASSET_VERSION);
+    const version = getAssetVersionForPath(normalizeArticleMdPath(SITE_GITHUB_SOURCE.docsDir) + '/assets/algorithms/' + normalizedPath);
+    if (version) {
+      scriptUrl.searchParams.set('v', version);
     } else {
       // 本地目录发现模式没有版本号，退回时间戳保证开发时刷新
       scriptUrl.searchParams.set('_', String(Date.now()));
@@ -1135,8 +1165,9 @@ function loadFeatureScript(scriptPath) {
     script.async = false;
     script.dataset.featurePath = normalizedPath;
     const scriptUrl = new URL(buildSiteUrl(normalizedPath), window.location.href);
-    if (RUNTIME_ASSET_VERSION) {
-      scriptUrl.searchParams.set('v', RUNTIME_ASSET_VERSION);
+    const version = getAssetVersionForPath(normalizeArticleMdPath(SITE_GITHUB_SOURCE.docsDir) + '/' + normalizedPath);
+    if (version) {
+      scriptUrl.searchParams.set('v', version);
     } else {
       // 本地目录发现模式没有版本号，退回时间戳保证开发时刷新
       scriptUrl.searchParams.set('_', String(Date.now()));
