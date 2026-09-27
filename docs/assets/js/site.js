@@ -471,6 +471,7 @@ async function discoverAlgorithmEntriesFromDirectory() {
 }
 
 const GITHUB_TREE_CACHE_KEY = 'site:github-tree-v1';
+const GITHUB_TREE_WARM_TTL = 10 * 60 * 1000;
 
 function readGitHubTreeCache() {
   try {
@@ -481,9 +482,9 @@ function readGitHubTreeCache() {
   }
 }
 
-function writeGitHubTreeCache(etag, tree) {
+function writeGitHubTreeCache(etag, treeSha, tree) {
   try {
-    localStorage.setItem(GITHUB_TREE_CACHE_KEY, JSON.stringify({ etag: etag || '', tree, savedAt: Date.now() }));
+    localStorage.setItem(GITHUB_TREE_CACHE_KEY, JSON.stringify({ etag: etag || '', treeSha: treeSha || '', tree, savedAt: Date.now() }));
   } catch (error) {
     /* localStorage 不可用时静默降级 */
   }
@@ -504,6 +505,11 @@ function fetchGitHubTree() {
       '/git/trees/' + encodeURIComponent(SITE_GITHUB_SOURCE.branch) + '?recursive=1';
     githubTreeCachePromise = (async () => {
       const cached = readGitHubTreeCache();
+      if (cached) RUNTIME_ASSET_VERSION = String(cached.treeSha || '');
+      // 与 Pages CDN 的 max-age 对齐：10 分钟内直接信任本地树，省一次 API 往返
+      if (cached && cached.treeSha && Date.now() - (cached.savedAt || 0) < GITHUB_TREE_WARM_TTL) {
+        return cached.tree;
+      }
       const headers = { Accept: 'application/vnd.github+json' };
       if (cached && cached.etag) headers['If-None-Match'] = cached.etag;
       let response;
@@ -515,7 +521,7 @@ function fetchGitHubTree() {
       }
       // 304 不计入 GitHub API 限额，等于免费续期
       if (response.status === 304 && cached) {
-        writeGitHubTreeCache(cached.etag, cached.tree);
+        writeGitHubTreeCache(cached.etag, cached.treeSha, cached.tree);
         return cached.tree;
       }
       if (!response.ok) {
@@ -525,8 +531,8 @@ function fetchGitHubTree() {
       }
       const payload = await response.json();
       const tree = Array.isArray(payload.tree) ? payload.tree : [];
-      if (payload.sha) RUNTIME_ASSET_VERSION = String(payload.sha);
-      writeGitHubTreeCache(response.headers.get('ETag'), tree);
+      RUNTIME_ASSET_VERSION = String(payload.sha || '');
+      writeGitHubTreeCache(response.headers.get('ETag'), payload.sha, tree);
       return tree;
     })();
   }
