@@ -40,9 +40,9 @@ DOMContentLoaded
         └── 隐藏文章的 *.js 触发脚本在此阶段加载
 ```
 
-**发现策略**：优先尝试本地目录遍历（fetch 目录列表页解析 `<a>` 标签），失败则回退到 GitHub API (`git/trees`)。
+**发现策略**：优先尝试本地目录遍历（fetch 目录列表页解析 `<a>` 标签），失败则回退到 GitHub API (`git/trees`)。生产环境没有目录列表，实际走 GitHub API；tree 响应带 ETag 存入 localStorage，后续访问用 `If-None-Match` 条件请求，返回 304 时不计入 API 限额，接口异常时用上次缓存的树兜底。
 
-**去缓存**：所有动态脚本加载时附加 `_=timestamp` 查询参数，确保不命中缓存。
+**缓存策略**：生产环境以 git tree SHA 作为资源版本号（`?v=<sha>`），文章请求用 `force-cache` 实现内容寻址缓存——文件没变就永远不再发起网络请求；本地目录发现模式没有版本号，退回 `_=timestamp` 保证开发时实时刷新。
 
 ### 三类插件体系
 

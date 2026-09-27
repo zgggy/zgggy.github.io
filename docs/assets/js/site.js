@@ -35,6 +35,7 @@ const SITE_SCRIPT_URL = (() => {
 const SITE_ROOT_URL = new URL('../../', SITE_SCRIPT_URL);
 const RUNTIME_LINK_MAP = Object.create(null);
 let githubTreeCachePromise = null;
+let RUNTIME_ASSET_VERSION = '';
 const HIDDEN_RUNTIME_BRIDGE = {
   articleOpenListeners: [],
   articleCloseListeners: [],
@@ -469,20 +470,65 @@ async function discoverAlgorithmEntriesFromDirectory() {
   }
 }
 
+const GITHUB_TREE_CACHE_KEY = 'site:github-tree-v1';
+
+function readGitHubTreeCache() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(GITHUB_TREE_CACHE_KEY) || 'null');
+    return parsed && Array.isArray(parsed.tree) ? parsed : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeGitHubTreeCache(etag, tree) {
+  try {
+    localStorage.setItem(GITHUB_TREE_CACHE_KEY, JSON.stringify({ etag: etag || '', tree, savedAt: Date.now() }));
+  } catch (error) {
+    /* localStorage 不可用时静默降级 */
+  }
+}
+
+function appendAssetVersion(url) {
+  if (!RUNTIME_ASSET_VERSION) return url;
+  const versioned = new URL(String(url), window.location.href);
+  versioned.searchParams.set('v', RUNTIME_ASSET_VERSION);
+  return versioned.toString();
+}
+
 function fetchGitHubTree() {
   if (!githubTreeCachePromise) {
     const apiUrl = 'https://api.github.com/repos/' +
       encodeURIComponent(SITE_GITHUB_SOURCE.owner) + '/' +
       encodeURIComponent(SITE_GITHUB_SOURCE.repo) +
       '/git/trees/' + encodeURIComponent(SITE_GITHUB_SOURCE.branch) + '?recursive=1';
-    githubTreeCachePromise = fetch(apiUrl, {
-      headers: { Accept: 'application/vnd.github+json' },
-      cache: 'no-store'
-    }).then(async (response) => {
-      if (!response.ok) throw new Error('Failed to fetch GitHub tree: ' + response.status);
+    githubTreeCachePromise = (async () => {
+      const cached = readGitHubTreeCache();
+      const headers = { Accept: 'application/vnd.github+json' };
+      if (cached && cached.etag) headers['If-None-Match'] = cached.etag;
+      let response;
+      try {
+        response = await fetch(apiUrl, { headers, cache: 'no-store' });
+      } catch (error) {
+        if (cached) return cached.tree;
+        throw error;
+      }
+      // 304 不计入 GitHub API 限额，等于免费续期
+      if (response.status === 304 && cached) {
+        writeGitHubTreeCache(cached.etag, cached.tree);
+        return cached.tree;
+      }
+      if (!response.ok) {
+        // 配额耗尽或接口异常时，用旧树兜底，保证文章区不空白
+        if (cached) return cached.tree;
+        throw new Error('Failed to fetch GitHub tree: ' + response.status);
+      }
       const payload = await response.json();
-      return Array.isArray(payload.tree) ? payload.tree : [];
-    });
+      const tree = Array.isArray(payload.tree) ? payload.tree : [];
+      if (payload.sha) RUNTIME_ASSET_VERSION = String(payload.sha);
+      writeGitHubTreeCache(response.headers.get('ETag'), tree);
+      return tree;
+    })();
   }
   return githubTreeCachePromise;
 }
@@ -507,7 +553,8 @@ async function discoverSiteEntriesFromGitHub() {
             slug,
             section: inferSectionFromMdPath(mdPath),
             mdPath,
-            mdUrl: buildSiteUrl('articles/' + mdPath)
+            mdUrl: appendAssetVersion(buildSiteUrl('articles/' + mdPath)),
+            immutable: Boolean(RUNTIME_ASSET_VERSION)
           });
         }
         return;
@@ -622,7 +669,8 @@ async function loadRuntimeArticles() {
       slug: entry.slug,
       section: entry.section || (isHiddenArticleEntry(entry) ? 'hidden' : 'article'),
       mdPath: entry.mdPath,
-      mdUrl: entry.mdUrl || buildSiteUrl('articles/' + entry.mdPath)
+      mdUrl: entry.mdUrl || buildSiteUrl('articles/' + entry.mdPath),
+      immutable: Boolean(entry.immutable)
     });
   });
 
@@ -630,7 +678,7 @@ async function loadRuntimeArticles() {
   const loaded = (await Promise.all(
     entries.map(async (entry) => {
       try {
-        const response = await fetch(entry.mdUrl, { cache: 'no-store' });
+        const response = await fetch(entry.mdUrl, { cache: entry.immutable ? 'force-cache' : 'no-store' });
         if (!response.ok) throw new Error('Failed to load ' + entry.mdUrl);
         const markdown = await response.text();
         return parseRuntimeArticle(entry, markdown);
@@ -708,6 +756,7 @@ function initArticleModal(runtimeData) {
     if (!article) return;
     currentArticleSlug = slug;
     title.textContent = article.title;
+    document.title = article.title ? article.title + ' - 杉杪' : '杉杪';
     meta.textContent = formatModalMeta(article);
     meta.hidden = !meta.textContent;
     time.textContent = article.publishedAt || '';
@@ -738,6 +787,7 @@ function initArticleModal(runtimeData) {
     modal.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('has-modal-open');
     currentArticleSlug = '';
+    document.title = '杉杪';
     if (closedSlug) emitHiddenRuntimeListeners(HIDDEN_RUNTIME_BRIDGE.articleCloseListeners, { slug: closedSlug, article: closedArticle, openArticle });
   }
 
@@ -807,6 +857,30 @@ function initHomeDirectory(runtimeData) {
     }
     directory.classList.remove('is-switching-out');
     directory.classList.remove('is-switching-in');
+  }
+
+  // 后台标签页会冻结 requestAnimationFrame，挂起期间退回 setTimeout，避免目录永久卡在淡出状态
+  function scheduleRenderSwap(callback) {
+    let done = false;
+    const run = () => {
+      if (done) return;
+      done = true;
+      callback();
+    };
+    if (document.hidden) {
+      renderTransitionTimer = window.setTimeout(run, 32);
+      return;
+    }
+    renderTransitionFrame = requestAnimationFrame(() => {
+      if (document.hidden) {
+        renderTransitionFrame = 0;
+        renderTransitionTimer = window.setTimeout(run, 32);
+        return;
+      }
+      renderTransitionFrame = requestAnimationFrame(run);
+    });
+    // 兜底：窗口被遮挡等场景下 rAF 冻结但 hidden 仍为 false，超时后强制完成内容交换
+    renderTransitionTimer = window.setTimeout(run, 260);
   }
 
   function getDirectoryCategory(article) {
@@ -904,18 +978,16 @@ function initHomeDirectory(runtimeData) {
 
     clearRenderTransitionState();
     directory.classList.add('is-switching-out');
-    renderTransitionFrame = requestAnimationFrame(() => {
-      renderTransitionFrame = requestAnimationFrame(() => {
-        directory.innerHTML = markup;
-        directory.classList.remove('is-switching-out');
-        directory.classList.add('is-switching-in');
-        emitDirectoryRendered();
-        renderTransitionTimer = window.setTimeout(() => {
-          directory.classList.remove('is-switching-in');
-          renderTransitionTimer = 0;
-        }, 280);
-        renderTransitionFrame = 0;
-      });
+    scheduleRenderSwap(() => {
+      renderTransitionFrame = 0;
+      directory.innerHTML = markup;
+      directory.classList.remove('is-switching-out');
+      directory.classList.add('is-switching-in');
+      emitDirectoryRendered();
+      renderTransitionTimer = window.setTimeout(() => {
+        directory.classList.remove('is-switching-in');
+        renderTransitionTimer = 0;
+      }, 280);
     });
   }
   renderFilters();
@@ -995,7 +1067,12 @@ function loadAlgorithmScript(scriptPath) {
     script.async = false;
     script.dataset.algorithmPath = normalizedPath;
     const scriptUrl = new URL(buildSiteUrl('assets/algorithms/' + normalizedPath), window.location.href);
-    scriptUrl.searchParams.set('_', String(Date.now()));
+    if (RUNTIME_ASSET_VERSION) {
+      scriptUrl.searchParams.set('v', RUNTIME_ASSET_VERSION);
+    } else {
+      // 本地目录发现模式没有版本号，退回时间戳保证开发时刷新
+      scriptUrl.searchParams.set('_', String(Date.now()));
+    }
     script.src = scriptUrl.toString();
     script.onload = () => {
       script.dataset.loaded = 'true';
@@ -1052,7 +1129,12 @@ function loadFeatureScript(scriptPath) {
     script.async = false;
     script.dataset.featurePath = normalizedPath;
     const scriptUrl = new URL(buildSiteUrl(normalizedPath), window.location.href);
-    scriptUrl.searchParams.set('_', String(Date.now()));
+    if (RUNTIME_ASSET_VERSION) {
+      scriptUrl.searchParams.set('v', RUNTIME_ASSET_VERSION);
+    } else {
+      // 本地目录发现模式没有版本号，退回时间戳保证开发时刷新
+      scriptUrl.searchParams.set('_', String(Date.now()));
+    }
     script.src = scriptUrl.toString();
     script.onload = () => {
       script.dataset.loaded = 'true';
@@ -1151,16 +1233,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   syncLayoutMetrics();
   L && await L.update(10);
-  try { await loadAlgorithmScripts(); } catch (e) { console.warn('[algorithms]', e); }
-  L && await L.update(20);
-  try { await loadFeatureScripts(); } catch (e) { console.warn('[features]', e); }
-  L && await L.update(30);
-  initAlgorithms();
-  window.addEventListener('resize', syncLayoutMetrics);
   try {
-    L && await L.update(40);
-    const runtimeData = await loadRuntimeArticles();
-    L && await L.update(70);
+    // 算法、功能插件、文章三路互不依赖，并行加载以缩短启动瀑布
+    const [runtimeData] = await Promise.all([
+      loadRuntimeArticles(),
+      loadAlgorithmScripts().catch((e) => { console.warn('[algorithms]', e); return null; }),
+      loadFeatureScripts().catch((e) => { console.warn('[features]', e); return null; })
+    ]);
+    L && await L.update(60);
+    initAlgorithms();
+    window.addEventListener('resize', syncLayoutMetrics);
     const modalControls = initArticleModal(runtimeData);
     initHomeDirectory(runtimeData);
     L && await L.update(80);
